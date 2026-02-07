@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+!.env.example
+
+# SQLite database (generated at runtime)
+*.db
+*.db-wal
+*.db-shm
+
+# Assets (generated/user content, not source code)
+on-premise/data/assets/
+!on-premise/data/assets/.gitkeep
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code local state
+.claude/

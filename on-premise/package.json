@@ -1,0 +1,37 @@
+{
+  "name": "mal-mcp-hub-local",
+  "version": "1.0.0",
+  "description": "MCP Server centralizado — Monterrey Agentic Labs (On-Premise)",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "start:stdio": "INFRA_MODE=local TRANSPORT=stdio node dist/index.js",
+    "start:http": "INFRA_MODE=local TRANSPORT=http node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "setup": "bash scripts/setup-local.sh",
+    "seed": "tsx scripts/seed-catalog.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^4.21.0",
+    "zod": "^3.23.0",
+    "pino": "^9.0.0",
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "vitest": "^2.1.0",
+    "eslint": "^9.0.0",
+    "@modelcontextprotocol/inspector": "^0.2.0"
+  }
+}

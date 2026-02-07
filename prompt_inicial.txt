@@ -1,0 +1,1293 @@
+# CLAUDE.md — MAL MCP Hub
+
+## Identidad del Proyecto
+
+**Nombre**: `mal-mcp-hub`
+**Owner**: Monterrey Agentic Labs
+**Propósito**: MCP Server centralizado que actúa como biblioteca de comandos, skills, subagentes y gateway a otros MCPs para todo el equipo, conectado a Claude Code.
+**Stack**: TypeScript + Node.js
+**Protocolo**: MCP (Model Context Protocol) spec vigente
+
+---
+
+## Dos Caminos de Deployment
+
+Este proyecto soporta dos modos de operación independientes. Ambos comparten el 100% del código de negocio; solo difieren en infraestructura, persistencia y transporte.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        mal-mcp-hub (core)                           │
+│   Tools │ Schemas │ Services │ Utils — CÓDIGO COMPARTIDO 100%       │
+└──────────────────────┬──────────────────────┬───────────────────────┘
+                       │                      │
+            ┌──────────▼──────────┐ ┌─────────▼──────────┐
+            │   CAMINO 1: GCP     │ │  CAMINO 2: LOCAL    │
+            │                     │ │                     │
+            │ Cloud Run (HTTP)    │ │ stdio / HTTP local  │
+            │ Firestore           │ │ SQLite              │
+            │ GCS Bucket          │ │ Filesystem local    │
+            │ Secret Manager      │ │ .env file           │
+            │ Cloud Build CI/CD   │ │ Git + scripts       │
+            │ Multi-tenant        │ │ Single-user / LAN   │
+            └─────────────────────┘ └─────────────────────┘
+```
+
+### Matriz de Decisión
+
+| Criterio | 🌩️ GCP | 🖥️ Local |
+|----------|---------|----------|
+| **Setup time** | ~2 días (Terraform + deploy) | ~2 horas (npm install + run) |
+| **Costo mensual** | ~$5-15 USD (scale-to-zero) | $0 (tu máquina) |
+| **Acceso equipo** | URL pública/privada, multi-dev | LAN o solo tu máquina |
+| **Persistencia** | Firestore (managed, backup automático) | SQLite (archivo local, backup manual) |
+| **Assets (SKILL.md)** | GCS con versionado | Carpeta `./data/assets/` |
+| **Secrets** | Secret Manager | `.env` + gitignore |
+| **CI/CD** | Cloud Build automático | Scripts manuales |
+| **Escalabilidad** | Auto-scale 0→10 instancias | 1 proceso |
+| **Offline** | ❌ Requiere internet | ✅ Funciona sin internet |
+| **Ideal para** | Equipo distribuido, producción | Prototipo rápido, dev solo, demos |
+
+---
+
+## Arquitectura de Alto Nivel
+
+### Camino 1: GCP
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Claude Code (cada dev)                    │
+│  settings.json → mcpServers: mal-mcp-hub (URL remota)       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ POST /mcp (Streamable HTTP)
+                           │ Header: x-api-key
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  GCP Cloud Run Service                       │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              mal-mcp-hub (Express + MCP SDK)          │  │
+│  │                                                       │  │
+│  │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  │  │
+│  │  │  Registry    │  │  Skill       │  │  Subagent   │  │  │
+│  │  │  Module      │  │  Executor    │  │  Router     │  │  │
+│  │  └──────┬──────┘  └──────┬───────┘  └──────┬──────┘  │  │
+│  │         │                │                  │         │  │
+│  │  ┌──────▼────────────────▼──────────────────▼──────┐  │  │
+│  │  │            Firestore (Catálogo)                  │  │  │
+│  │  │   commands/ │ skills/ │ mcps/ │ subagents/       │  │  │
+│  │  └─────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌─────────────────────┐  ┌────────────────────────────┐    │
+│  │ GCS: mal-mcp-assets │  │ Secret Manager: API keys   │    │
+│  │ skills/ templates/  │  │ tokens MCPs downstream     │    │
+│  └─────────────────────┘  └────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Camino 2: Local
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Claude Code (tu máquina)                  │
+│  settings.json → mcpServers: mal-mcp-hub (stdio o localhost)│
+└──────────────────────────┬──────────────────────────────────┘
+                           │ stdio (subprocess)
+                           │   — o —
+                           │ POST http://localhost:3000/mcp
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              mal-mcp-hub (Node.js proceso local)            │
+│                                                              │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐        │
+│  │  Registry    │  │  Skill       │  │  Subagent   │        │
+│  │  Module      │  │  Executor    │  │  Router     │        │
+│  └──────┬──────┘  └──────┬───────┘  └──────┬──────┘        │
+│         │                │                  │               │
+│  ┌──────▼────────────────▼──────────────────▼──────┐        │
+│  │           SQLite (./data/catalog.db)             │        │
+│  │   commands │ skills │ mcps │ subagents           │        │
+│  └─────────────────────────────────────────────────┘        │
+│                                                              │
+│  ┌─────────────────────┐  ┌────────────────────────┐        │
+│  │ ./data/assets/      │  │ .env                   │        │
+│  │ skills/ templates/  │  │ API keys locales       │        │
+│  └─────────────────────┘  └────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Estructura del Proyecto
+
+```
+mal-mcp-hub/
+├── CLAUDE.md
+├── package.json
+├── tsconfig.json
+├── .env.example                       # Template de variables (ambos caminos)
+├── .gitignore
+│
+├── src/
+│   ├── index.ts                       # Entry point: detecta transporte y arranca
+│   ├── constants.ts                   # Config, límites, feature flags
+│   ├── types.ts                       # Interfaces compartidas
+│   ├── server.ts                      # McpServer factory + registerTool
+│   │
+│   ├── tools/                         # --- CÓDIGO 100% COMPARTIDO ---
+│   │   ├── registry.ts                # CRUD del catálogo
+│   │   ├── skills.ts                  # Consulta y ejecución de skills
+│   │   ├── commands.ts                # Biblioteca de comandos
+│   │   ├── subagents.ts               # Gestión de subagentes
+│   │   ├── mcp-proxy.ts              # Gateway a MCPs downstream
+│   │   └── meta.ts                    # Export/import, stats, health
+│   │
+│   ├── schemas/                       # --- CÓDIGO 100% COMPARTIDO ---
+│   │   ├── skill.schema.ts
+│   │   ├── command.schema.ts
+│   │   ├── subagent.schema.ts
+│   │   └── mcp-entry.schema.ts
+│   │
+│   ├── services/                      # --- CAPA DE ABSTRACCIÓN ---
+│   │   ├── database.ts                # Interface IDatabase
+│   │   ├── storage.ts                 # Interface IStorage
+│   │   ├── secrets.ts                 # Interface ISecrets
+│   │   ├── auth.ts                    # Middleware de auth
+│   │   │
+│   │   ├── gcp/                       # Implementaciones GCP
+│   │   │   ├── firestore.adapter.ts   # IDatabase → Firestore
+│   │   │   ├── gcs.adapter.ts         # IStorage → GCS Bucket
+│   │   │   └── secret-manager.adapter.ts  # ISecrets → Secret Manager
+│   │   │
+│   │   └── local/                     # Implementaciones Locales
+│   │       ├── sqlite.adapter.ts      # IDatabase → SQLite (better-sqlite3)
+│   │       ├── filesystem.adapter.ts  # IStorage → ./data/assets/
+│   │       └── dotenv.adapter.ts      # ISecrets → .env / process.env
+│   │
+│   ├── transport/
+│   │   ├── http.ts                    # Express + StreamableHTTPServerTransport
+│   │   └── stdio.ts                   # StdioServerTransport
+│   │
+│   └── utils/
+│       ├── pagination.ts
+│       ├── formatter.ts
+│       ├── error-handler.ts
+│       └── logger.ts                  # pino (stderr para stdio compat)
+│
+├── data/                              # Solo Camino Local (gitignored excepto schema)
+│   ├── catalog.db                     # SQLite database
+│   ├── assets/                        # Skills, templates
+│   │   ├── skills/
+│   │   └── templates/
+│   └── schema.sql                     # Schema inicial (versionado en git)
+│
+├── terraform/                         # Solo Camino GCP
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── environments/
+│       ├── dev.tfvars
+│       └── prod.tfvars
+│
+├── scripts/
+│   ├── setup-local.sh                 # Inicializa SQLite + carpetas + .env
+│   ├── setup-gcp.sh                   # Terraform init + apply + deploy
+│   ├── seed-catalog.ts                # Carga skills/comandos iniciales
+│   └── onboard-dev.sh                 # Configura Claude Code settings.json
+│
+├── Dockerfile                         # Solo Camino GCP
+├── cloudbuild.yaml                    # Solo Camino GCP
+│
+└── tests/
+    ├── tools/
+    │   ├── registry.test.ts
+    │   ├── skills.test.ts
+    │   └── commands.test.ts
+    ├── services/
+    │   ├── sqlite.adapter.test.ts
+    │   └── firestore.adapter.test.ts
+    └── fixtures/
+        └── seed-data.json
+```
+
+---
+
+## Capa de Abstracción de Servicios
+
+La clave para que ambos caminos compartan código es el **patrón Adapter** sobre 3 interfaces:
+
+### `services/database.ts` — Interface IDatabase
+
+```typescript
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  has_more: boolean;
+  next_offset?: number;
+}
+
+export interface QueryOptions {
+  limit?: number;
+  offset?: number;
+  order_by?: string;
+  order_dir?: "asc" | "desc";
+  filters?: Record<string, unknown>;
+}
+
+export interface IDatabase {
+  // Generic CRUD
+  get<T>(collection: string, id: string): Promise<T | null>;
+  list<T>(collection: string, options?: QueryOptions): Promise<PaginatedResult<T>>;
+  create<T>(collection: string, id: string, data: T): Promise<T>;
+  update<T>(collection: string, id: string, data: Partial<T>): Promise<T>;
+  delete(collection: string, id: string): Promise<void>;
+
+  // Full-text search
+  search<T>(collection: string, query: string, options?: QueryOptions): Promise<PaginatedResult<T>>;
+
+  // Health
+  ping(): Promise<boolean>;
+}
+```
+
+### `services/storage.ts` — Interface IStorage
+
+```typescript
+export interface IStorage {
+  read(path: string): Promise<string>;
+  write(path: string, content: string): Promise<void>;
+  delete(path: string): Promise<void>;
+  list(prefix: string): Promise<string[]>;
+  exists(path: string): Promise<boolean>;
+  getUrl(path: string): Promise<string>;   // GCS signed URL o file:// path
+}
+```
+
+### `services/secrets.ts` — Interface ISecrets
+
+```typescript
+export interface ISecrets {
+  get(key: string): Promise<string>;
+  has(key: string): Promise<boolean>;
+}
+```
+
+### Factory: `services/factory.ts`
+
+```typescript
+import { IDatabase } from "./database";
+import { IStorage } from "./storage";
+import { ISecrets } from "./secrets";
+
+export type InfraMode = "gcp" | "local";
+
+export async function createServices(mode: InfraMode): Promise<{
+  db: IDatabase;
+  storage: IStorage;
+  secrets: ISecrets;
+}> {
+  if (mode === "gcp") {
+    const { FirestoreAdapter } = await import("./gcp/firestore.adapter");
+    const { GCSAdapter } = await import("./gcp/gcs.adapter");
+    const { SecretManagerAdapter } = await import("./gcp/secret-manager.adapter");
+    return {
+      db: new FirestoreAdapter(process.env.FIRESTORE_PROJECT!),
+      storage: new GCSAdapter(process.env.GCS_BUCKET!),
+      secrets: new SecretManagerAdapter(process.env.GCP_PROJECT_ID!),
+    };
+  }
+
+  const { SQLiteAdapter } = await import("./local/sqlite.adapter");
+  const { FilesystemAdapter } = await import("./local/filesystem.adapter");
+  const { DotenvAdapter } = await import("./local/dotenv.adapter");
+  return {
+    db: new SQLiteAdapter(process.env.SQLITE_PATH || "./data/catalog.db"),
+    storage: new FilesystemAdapter(process.env.ASSETS_PATH || "./data/assets"),
+    secrets: new DotenvAdapter(),
+  };
+}
+```
+
+---
+
+## Modelo de Datos
+
+### Interfaces TypeScript (compartidas)
+
+```typescript
+// types.ts
+export type SkillCategory = "data" | "document" | "devops" | "frontend" | "design" | "custom";
+
+export interface SkillEntry {
+  id: string;                    // "ml-pipeline"
+  name: string;
+  description: string;
+  version: string;               // semver
+  category: SkillCategory;
+  trigger_patterns: string[];
+  asset_path: string;            // GCS path o local path (abstracción)
+  dependencies: string[];
+  author: string;
+  tags: string[];
+  created_at: string;            // ISO 8601
+  updated_at: string;
+}
+
+export interface CommandEntry {
+  id: string;                    // "deploy-cloud-run"
+  name: string;
+  description: string;
+  category: string;
+  shell: "bash" | "python" | "node";
+  script_template: string;      // Template con {{variables}}
+  parameters: CommandParam[];
+  requires_confirmation: boolean;
+  author: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommandParam {
+  name: string;
+  type: "string" | "number" | "boolean" | "enum";
+  description: string;
+  required: boolean;
+  default?: string;
+  enum_values?: string[];
+}
+
+export interface SubagentConfig {
+  id: string;                    // "code-reviewer"
+  name: string;
+  description: string;
+  system_prompt: string;
+  model: string;
+  tools_allowed: string[];
+  max_turns: number;
+  input_schema: Record<string, unknown>;
+  output_format: "text" | "json" | "markdown";
+  author: string;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MCPRegistryEntry {
+  id: string;                    // "github"
+  name: string;
+  description: string;
+  transport: "streamable-http" | "stdio";
+  endpoint_url?: string;
+  command?: string;
+  args?: string[];
+  env_vars: Record<string, string>;
+  health_check_url?: string;
+  status: "active" | "inactive" | "error";
+  tools_exposed: string[];
+  author: string;
+  created_at: string;
+  updated_at: string;
+}
+```
+
+### SQLite Schema (Camino Local)
+
+```sql
+-- data/schema.sql
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '1.0.0',
+    category TEXT NOT NULL CHECK(category IN ('data','document','devops','frontend','design','custom')),
+    trigger_patterns TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    asset_path TEXT NOT NULL,
+    dependencies TEXT NOT NULL DEFAULT '[]',        -- JSON array
+    author TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',                -- JSON array
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS commands (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    shell TEXT NOT NULL CHECK(shell IN ('bash','python','node')),
+    script_template TEXT NOT NULL,
+    parameters TEXT NOT NULL DEFAULT '[]',          -- JSON array
+    requires_confirmation INTEGER NOT NULL DEFAULT 0,
+    author TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS subagents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    system_prompt TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'claude-sonnet-4-5-20250929',
+    tools_allowed TEXT NOT NULL DEFAULT '[]',
+    max_turns INTEGER NOT NULL DEFAULT 5,
+    input_schema TEXT NOT NULL DEFAULT '{}',
+    output_format TEXT NOT NULL DEFAULT 'markdown' CHECK(output_format IN ('text','json','markdown')),
+    author TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS mcps (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    transport TEXT NOT NULL CHECK(transport IN ('streamable-http','stdio')),
+    endpoint_url TEXT,
+    command TEXT,
+    args TEXT NOT NULL DEFAULT '[]',
+    env_vars TEXT NOT NULL DEFAULT '{}',
+    health_check_url TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','error')),
+    tools_exposed TEXT NOT NULL DEFAULT '[]',
+    author TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Full-text search
+CREATE VIRTUAL TABLE IF NOT EXISTS catalog_fts USING fts5(
+    id,
+    name,
+    description,
+    tags,
+    collection,          -- 'skills', 'commands', 'subagents', 'mcps'
+    content='',          -- contentless: solo para búsqueda
+    tokenize='porter unicode61'
+);
+
+-- Usage tracking
+CREATE TABLE IF NOT EXISTS usage_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    resource_id TEXT,
+    user_key TEXT,
+    timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+    duration_ms INTEGER,
+    success INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX idx_usage_timestamp ON usage_log(timestamp);
+CREATE INDEX idx_usage_tool ON usage_log(tool_name);
+```
+
+### Firestore Collections (Camino GCP)
+
+Misma estructura que las interfaces TypeScript. Collections:
+- `skills/` → `SkillEntry`
+- `commands/` → `CommandEntry`
+- `subagents/` → `SubagentConfig`
+- `mcps/` → `MCPRegistryEntry`
+- `usage_log/` → Documentos con timestamp auto-generated
+
+Full-text search en GCP: usar Firestore `array-contains` sobre campo `search_tokens` (array de keywords generados al escribir) o integrar con Vertex AI Search en Fase 2.
+
+---
+
+## Herramientas MCP
+
+### Grupo 1: Registry (CRUD)
+
+| Tool | Descripción | Annotations |
+|------|-------------|-------------|
+| `mal_list_skills` | Lista skills con filtros (category, tags, search) | readOnly: true |
+| `mal_get_skill` | Detalle completo + contenido SKILL.md | readOnly: true |
+| `mal_register_skill` | Registra skill + sube asset | destructive: false |
+| `mal_update_skill` | Actualiza metadata o contenido | destructive: false |
+| `mal_delete_skill` | Elimina skill del registro | destructive: true |
+| `mal_list_commands` | Lista comandos con filtros | readOnly: true |
+| `mal_get_command` | Detalle con template renderizado | readOnly: true |
+| `mal_register_command` | Registra nuevo comando | destructive: false |
+| `mal_list_subagents` | Lista configs de subagentes | readOnly: true |
+| `mal_get_subagent` | Config completa de subagente | readOnly: true |
+| `mal_register_subagent` | Registra config de subagente | destructive: false |
+| `mal_list_mcps` | Lista MCPs y su status | readOnly: true |
+| `mal_register_mcp` | Registra MCP externo | destructive: false |
+
+### Grupo 2: Ejecución y Proxy
+
+| Tool | Descripción | Annotations |
+|------|-------------|-------------|
+| `mal_execute_command` | Renderiza template y ejecuta | destructive: true |
+| `mal_proxy_mcp_call` | Proxy a tool de MCP downstream | openWorld: true |
+| `mal_search_catalog` | Búsqueda full-text en todo el catálogo | readOnly: true |
+| `mal_health_check` | Status de MCPs y servicios | readOnly: true |
+
+### Grupo 3: Meta
+
+| Tool | Descripción | Annotations |
+|------|-------------|-------------|
+| `mal_export_catalog` | Exporta catálogo como JSON | readOnly: true |
+| `mal_import_catalog` | Importa catálogo desde JSON | destructive: true |
+| `mal_get_usage_stats` | Estadísticas de uso | readOnly: true |
+
+---
+
+## Camino 1: GCP — Detalle de Infraestructura
+
+### Servicios GCP Requeridos
+
+| Servicio | Propósito | Costo estimado |
+|----------|-----------|----------------|
+| Cloud Run | Hosting del MCP server | ~$0-5/mes (scale-to-zero) |
+| Firestore | Base de datos del catálogo | ~$0-2/mes (free tier cubre ~50k reads/día) |
+| Cloud Storage | Assets (SKILL.md, templates) | ~$0.02/mes (< 1GB) |
+| Secret Manager | API keys, tokens | ~$0.06/mes por 6 secrets |
+| Cloud Build | CI/CD | 120 min/día gratis |
+| Artifact Registry | Container images | ~$0.10/mes |
+
+**Total estimado dev**: ~$2-8 USD/mes
+**Total estimado prod**: ~$10-20 USD/mes
+
+### Terraform
+
+```hcl
+# terraform/main.tf
+
+terraform {
+  required_providers {
+    google = { source = "hashicorp/google", version = "~> 5.0" }
+  }
+  backend "gcs" {
+    bucket = "mal-terraform-state"
+    prefix = "mcp-hub"
+  }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+# --- Service Account ---
+resource "google_service_account" "mcp_hub" {
+  account_id   = "mal-mcp-hub"
+  display_name = "MAL MCP Hub"
+}
+
+resource "google_project_iam_member" "roles" {
+  for_each = toset([
+    "roles/datastore.user",
+    "roles/storage.objectAdmin",
+    "roles/secretmanager.secretAccessor",
+  ])
+  project = var.project_id
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.mcp_hub.email}"
+}
+
+# --- Firestore ---
+resource "google_firestore_database" "catalog" {
+  name        = "mal-catalog"
+  location_id = var.region
+  type        = "FIRESTORE_NATIVE"
+}
+
+# --- Cloud Storage ---
+resource "google_storage_bucket" "assets" {
+  name     = "mal-mcp-assets-${var.project_id}"
+  location = upper(var.region)
+  versioning { enabled = true }
+  lifecycle_rule {
+    action { type = "Delete" }
+    condition { num_newer_versions = 10 }
+  }
+}
+
+# --- Secret Manager ---
+resource "google_secret_manager_secret" "api_keys" {
+  secret_id = "mal-mcp-api-keys"
+  replication { auto {} }
+}
+
+# --- Cloud Run ---
+resource "google_cloud_run_v2_service" "mcp_hub" {
+  name     = "mal-mcp-hub"
+  location = var.region
+
+  template {
+    service_account = google_service_account.mcp_hub.email
+
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/mal-registry/mal-mcp-hub:latest"
+      ports { container_port = 3000 }
+
+      env { name = "INFRA_MODE"        value = "gcp" }
+      env { name = "FIRESTORE_PROJECT" value = var.project_id }
+      env { name = "GCS_BUCKET"        value = google_storage_bucket.assets.name }
+      env { name = "GCP_PROJECT_ID"    value = var.project_id }
+
+      resources {
+        limits   = { cpu = "1", memory = "512Mi" }
+        cpu_idle = true    # Scale-to-zero friendly
+      }
+    }
+
+    scaling {
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
+    }
+  }
+}
+
+# --- Artifact Registry ---
+resource "google_artifact_registry_repository" "registry" {
+  location      = var.region
+  repository_id = "mal-registry"
+  format        = "DOCKER"
+}
+```
+
+```hcl
+# terraform/variables.tf
+variable "project_id"    { type = string }
+variable "region"        { type = string, default = "us-central1" }
+variable "min_instances" { type = number, default = 0 }
+variable "max_instances" { type = number, default = 10 }
+```
+
+```hcl
+# terraform/environments/dev.tfvars
+project_id    = "mal-dev-xxxxxx"
+region        = "us-central1"
+min_instances = 0
+max_instances = 2
+```
+
+```hcl
+# terraform/environments/prod.tfvars
+project_id    = "mal-prod-xxxxxx"
+region        = "us-central1"
+min_instances = 1
+max_instances = 10
+```
+
+### Dockerfile
+
+```dockerfile
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
+
+FROM node:20-slim AS runtime
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+ENV NODE_ENV=production PORT=3000 TRANSPORT=http INFRA_MODE=gcp
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
+```
+
+### CI/CD: `cloudbuild.yaml`
+
+```yaml
+steps:
+  - name: 'node:20'
+    entrypoint: npm
+    args: ['ci']
+
+  - name: 'node:20'
+    entrypoint: npm
+    args: ['run', 'build']
+
+  - name: 'node:20'
+    entrypoint: npm
+    args: ['test']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:$COMMIT_SHA', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:latest', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: ['run', 'deploy', 'mal-mcp-hub', '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:$COMMIT_SHA', '--region=${_REGION}']
+
+substitutions:
+  _REGION: us-central1
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+```
+
+### Config Claude Code (equipo remoto)
+
+```jsonc
+// .claude/settings.json
+{
+  "mcpServers": {
+    "mal-hub": {
+      "type": "url",
+      "url": "https://mal-mcp-hub-xxxxxxxx-uc.a.run.app/mcp",
+      "headers": {
+        "x-api-key": "${MAL_MCP_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### Seguridad GCP
+
+- API Key por header `x-api-key` → validada contra Secret Manager
+- Cada dev tiene su propia key para auditoría
+- Prod: Cloud Run con `--no-allow-unauthenticated` + IAM `roles/run.invoker`
+- Opcional Fase 2: Identity-Aware Proxy para SSO con Google Workspace
+- Todos los tokens downstream en Secret Manager, nunca hardcodeados
+
+---
+
+## Camino 2: Local — Detalle de Infraestructura
+
+### Dependencias Adicionales
+
+```jsonc
+// Solo se instalan estas en modo local:
+{
+  "dependencies": {
+    "better-sqlite3": "^11.0.0"  // SQLite driver (sync, rápido, zero-config)
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0"
+  }
+}
+```
+
+### Setup Script: `scripts/setup-local.sh`
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+echo "🔧 MAL MCP Hub — Setup Local"
+
+# Crear estructura de datos
+mkdir -p data/assets/skills data/assets/templates
+
+# Copiar .env
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "📝 Creado .env — edita las variables antes de arrancar"
+fi
+
+# Inicializar SQLite
+if [ ! -f data/catalog.db ]; then
+  echo "📦 Inicializando SQLite..."
+  npx ts-node -e "
+    const Database = require('better-sqlite3');
+    const fs = require('fs');
+    const db = new Database('./data/catalog.db');
+    const schema = fs.readFileSync('./data/schema.sql', 'utf8');
+    db.exec(schema);
+    db.close();
+    console.log('✅ SQLite inicializado');
+  "
+fi
+
+# Build
+npm run build
+
+echo ""
+echo "✅ Setup completo. Opciones para arrancar:"
+echo ""
+echo "  Modo stdio (recomendado para Claude Code):"
+echo "    INFRA_MODE=local TRANSPORT=stdio node dist/index.js"
+echo ""
+echo "  Modo HTTP (para MCP Inspector o acceso LAN):"
+echo "    INFRA_MODE=local TRANSPORT=http node dist/index.js"
+echo ""
+```
+
+### `.env.example`
+
+```bash
+# --- Modo de infraestructura ---
+INFRA_MODE=local          # "local" | "gcp"
+TRANSPORT=stdio           # "stdio" | "http"
+PORT=3000                 # Solo para TRANSPORT=http
+
+# --- Local ---
+SQLITE_PATH=./data/catalog.db
+ASSETS_PATH=./data/assets
+
+# --- GCP (solo si INFRA_MODE=gcp) ---
+# FIRESTORE_PROJECT=mal-dev-xxxxxx
+# GCS_BUCKET=mal-mcp-assets-mal-dev-xxxxxx
+# GCP_PROJECT_ID=mal-dev-xxxxxx
+
+# --- Auth ---
+API_KEY=mal-local-dev-key-change-me    # Para modo HTTP local
+
+# --- MCPs downstream (tokens) ---
+# GITHUB_TOKEN=ghp_xxxxx
+# SLACK_TOKEN=xoxb-xxxxx
+```
+
+### SQLite Adapter: `services/local/sqlite.adapter.ts`
+
+```typescript
+import Database from "better-sqlite3";
+import type { IDatabase, PaginatedResult, QueryOptions } from "../database";
+
+export class SQLiteAdapter implements IDatabase {
+  private db: Database.Database;
+
+  constructor(dbPath: string) {
+    this.db = new Database(dbPath);
+    this.db.pragma("journal_mode = WAL");       // Mejor concurrencia
+    this.db.pragma("foreign_keys = ON");
+  }
+
+  async get<T>(collection: string, id: string): Promise<T | null> {
+    const row = this.db.prepare(`SELECT * FROM ${collection} WHERE id = ?`).get(id);
+    return row ? this.deserializeRow<T>(row) : null;
+  }
+
+  async list<T>(collection: string, options?: QueryOptions): Promise<PaginatedResult<T>> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    let where = "1=1";
+    const params: unknown[] = [];
+
+    if (options?.filters) {
+      for (const [key, value] of Object.entries(options.filters)) {
+        if (typeof value === "string" && value.includes(",")) {
+          // Tag search: JSON array contains
+          where += ` AND ${key} LIKE ?`;
+          params.push(`%${value}%`);
+        } else {
+          where += ` AND ${key} = ?`;
+          params.push(value);
+        }
+      }
+    }
+
+    const orderBy = options?.order_by ?? "updated_at";
+    const orderDir = options?.order_dir ?? "desc";
+
+    const countRow = this.db.prepare(`SELECT COUNT(*) as total FROM ${collection} WHERE ${where}`).get(...params) as { total: number };
+    const total = countRow.total;
+
+    const rows = this.db.prepare(
+      `SELECT * FROM ${collection} WHERE ${where} ORDER BY ${orderBy} ${orderDir} LIMIT ? OFFSET ?`
+    ).all(...params, limit, offset);
+
+    return {
+      items: rows.map((r) => this.deserializeRow<T>(r)),
+      total,
+      has_more: total > offset + rows.length,
+      next_offset: total > offset + rows.length ? offset + rows.length : undefined,
+    };
+  }
+
+  async create<T>(collection: string, id: string, data: T): Promise<T> {
+    const obj = data as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    const placeholders = keys.map(() => "?").join(", ");
+    const values = keys.map((k) => this.serializeValue(obj[k]));
+
+    this.db.prepare(
+      `INSERT INTO ${collection} (${keys.join(", ")}) VALUES (${placeholders})`
+    ).run(...values);
+
+    return data;
+  }
+
+  async update<T>(collection: string, id: string, data: Partial<T>): Promise<T> {
+    const obj = data as Record<string, unknown>;
+    obj.updated_at = new Date().toISOString();
+    const sets = Object.keys(obj).map((k) => `${k} = ?`).join(", ");
+    const values = Object.keys(obj).map((k) => this.serializeValue(obj[k]));
+
+    this.db.prepare(`UPDATE ${collection} SET ${sets} WHERE id = ?`).run(...values, id);
+    return this.get<T>(collection, id) as Promise<T>;
+  }
+
+  async delete(collection: string, id: string): Promise<void> {
+    this.db.prepare(`DELETE FROM ${collection} WHERE id = ?`).run(id);
+  }
+
+  async search<T>(collection: string, query: string, options?: QueryOptions): Promise<PaginatedResult<T>> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    // FTS5 search across catalog
+    const ftsRows = this.db.prepare(
+      `SELECT id FROM catalog_fts WHERE catalog_fts MATCH ? AND collection = ? LIMIT ? OFFSET ?`
+    ).all(query, collection, limit, offset);
+
+    const ids = ftsRows.map((r: { id: string }) => r.id);
+    if (ids.length === 0) return { items: [], total: 0, has_more: false };
+
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = this.db.prepare(
+      `SELECT * FROM ${collection} WHERE id IN (${placeholders})`
+    ).all(...ids);
+
+    return {
+      items: rows.map((r) => this.deserializeRow<T>(r)),
+      total: rows.length,
+      has_more: false,  // FTS doesn't easily give total
+    };
+  }
+
+  async ping(): Promise<boolean> {
+    try {
+      this.db.prepare("SELECT 1").get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private deserializeRow<T>(row: unknown): T {
+    const obj = row as Record<string, unknown>;
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === "string" && (value.startsWith("[") || value.startsWith("{"))) {
+        try { obj[key] = JSON.parse(value); } catch { /* keep as string */ }
+      }
+    }
+    return obj as T;
+  }
+
+  private serializeValue(value: unknown): unknown {
+    if (Array.isArray(value) || (typeof value === "object" && value !== null)) {
+      return JSON.stringify(value);
+    }
+    return value;
+  }
+}
+```
+
+### Filesystem Adapter: `services/local/filesystem.adapter.ts`
+
+```typescript
+import { readFile, writeFile, unlink, readdir, access, mkdir } from "fs/promises";
+import { join, dirname } from "path";
+import type { IStorage } from "../storage";
+
+export class FilesystemAdapter implements IStorage {
+  constructor(private basePath: string) {}
+
+  async read(path: string): Promise<string> {
+    return readFile(join(this.basePath, path), "utf-8");
+  }
+
+  async write(path: string, content: string): Promise<void> {
+    const fullPath = join(this.basePath, path);
+    await mkdir(dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, content, "utf-8");
+  }
+
+  async delete(path: string): Promise<void> {
+    await unlink(join(this.basePath, path));
+  }
+
+  async list(prefix: string): Promise<string[]> {
+    const dir = join(this.basePath, prefix);
+    try {
+      const entries = await readdir(dir, { recursive: true });
+      return entries.map((e) => join(prefix, e.toString()));
+    } catch {
+      return [];
+    }
+  }
+
+  async exists(path: string): Promise<boolean> {
+    try {
+      await access(join(this.basePath, path));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async getUrl(path: string): Promise<string> {
+    return `file://${join(this.basePath, path)}`;
+  }
+}
+```
+
+### Config Claude Code (local — stdio)
+
+```jsonc
+// .claude/settings.json — Opción A: stdio (recomendado)
+{
+  "mcpServers": {
+    "mal-hub": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "cwd": "/ruta/a/mal-mcp-hub",
+      "env": {
+        "INFRA_MODE": "local",
+        "TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+```jsonc
+// .claude/settings.json — Opción B: HTTP local
+{
+  "mcpServers": {
+    "mal-hub": {
+      "type": "url",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "x-api-key": "mal-local-dev-key"
+      }
+    }
+  }
+}
+```
+
+### Acceso LAN (equipo en misma red)
+
+Para compartir el servidor local con compañeros en la misma red:
+
+```bash
+# Arrancar en modo HTTP escuchando en todas las interfaces
+INFRA_MODE=local TRANSPORT=http HOST=0.0.0.0 PORT=3000 node dist/index.js
+
+# Los compañeros se conectan a:
+# http://TU_IP_LOCAL:3000/mcp
+```
+
+### Migración Local → GCP
+
+Cuando estés listo para productivizar:
+
+```bash
+# 1. Exportar catálogo local
+INFRA_MODE=local node -e "
+  // Usar mal_export_catalog tool o script directo
+  const db = new SQLiteAdapter('./data/catalog.db');
+  // ... export a JSON
+"
+
+# 2. Setup GCP
+cd terraform && terraform apply -var-file=environments/prod.tfvars
+
+# 3. Deploy
+gcloud run deploy mal-mcp-hub --source .
+
+# 4. Importar catálogo
+# Usar mal_import_catalog tool contra el endpoint GCP
+
+# 5. Subir assets a GCS
+gsutil -m cp -r ./data/assets/* gs://mal-mcp-assets-PROJECT_ID/
+```
+
+---
+
+## Entry Point: `src/index.ts`
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createServices, type InfraMode } from "./services/factory";
+import { registerAllTools } from "./server";
+import { startHttpTransport } from "./transport/http";
+import { startStdioTransport } from "./transport/stdio";
+
+async function main() {
+  const infraMode = (process.env.INFRA_MODE || "local") as InfraMode;
+  const transport = process.env.TRANSPORT || "stdio";
+
+  console.error(`🚀 MAL MCP Hub — mode: ${infraMode}, transport: ${transport}`);
+
+  // 1. Crear servicios según el camino
+  const services = await createServices(infraMode);
+
+  // 2. Verificar conectividad
+  const dbOk = await services.db.ping();
+  if (!dbOk) throw new Error("Database connection failed");
+  console.error("✅ Database connected");
+
+  // 3. Crear MCP Server
+  const server = new McpServer({
+    name: "mal-mcp-hub",
+    version: "1.0.0",
+  });
+
+  // 4. Registrar tools (mismo código, servicios inyectados)
+  registerAllTools(server, services);
+
+  // 5. Arrancar transporte
+  if (transport === "http") {
+    await startHttpTransport(server, {
+      port: parseInt(process.env.PORT || "3000"),
+      host: process.env.HOST || "127.0.0.1",
+      authMiddleware: infraMode === "gcp" ? "secret-manager" : "env-key",
+    });
+  } else {
+    await startStdioTransport(server);
+  }
+}
+
+main().catch((err) => {
+  console.error("💥 Fatal:", err);
+  process.exit(1);
+});
+```
+
+---
+
+## package.json
+
+```jsonc
+{
+  "name": "mal-mcp-hub",
+  "version": "1.0.0",
+  "description": "MCP Server centralizado — Monterrey Agentic Labs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "start:local": "INFRA_MODE=local TRANSPORT=stdio node dist/index.js",
+    "start:local-http": "INFRA_MODE=local TRANSPORT=http node dist/index.js",
+    "start:gcp": "INFRA_MODE=gcp TRANSPORT=http node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "setup:local": "bash scripts/setup-local.sh",
+    "setup:gcp": "bash scripts/setup-gcp.sh",
+    "seed": "tsx scripts/seed-catalog.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^4.21.0",
+    "zod": "^3.23.0",
+    "pino": "^9.0.0",
+    "better-sqlite3": "^11.7.0",
+    "@google-cloud/firestore": "^7.10.0",
+    "@google-cloud/storage": "^7.14.0",
+    "@google-cloud/secret-manager": "^5.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "vitest": "^2.1.0",
+    "eslint": "^9.0.0",
+    "@modelcontextprotocol/inspector": "^0.2.0"
+  }
+}
+```
+
+---
+
+## Plan de Implementación
+
+### Sprint 1 (Semana 1-2): Foundation + Camino Local Funcional
+
+- [ ] Init proyecto: `package.json`, `tsconfig.json`, estructura de carpetas
+- [ ] Implementar interfaces: `IDatabase`, `IStorage`, `ISecrets`
+- [ ] Implementar `SQLiteAdapter` + `FilesystemAdapter` + `DotenvAdapter`
+- [ ] Implementar `schema.sql` + `setup-local.sh`
+- [ ] Implementar `src/index.ts` con detección de modo
+- [ ] Implementar transporte stdio + http
+- [ ] Schemas Zod para todos los modelos
+- [ ] **Milestone**: `npm run setup:local && npm run start:local` funciona
+- [ ] **Test**: Conectar desde Claude Code vía stdio, listar tools
+
+### Sprint 2 (Semana 3-4): Registry Tools Completos
+
+- [ ] Todos los tools del Grupo 1 (CRUD)
+- [ ] `mal_search_catalog` con FTS5
+- [ ] Pagination helper + JSON/Markdown formatter
+- [ ] Error handler con mensajes accionables
+- [ ] `seed-catalog.ts` con datos iniciales (skills existentes del equipo)
+- [ ] Tests unitarios (vitest) para cada tool contra SQLite
+- [ ] **Milestone**: CRUD completo funcionando desde Claude Code local
+
+### Sprint 3 (Semana 5-6): Execution + GCP Adapter
+
+- [ ] `mal_execute_command` con template rendering
+- [ ] `mal_proxy_mcp_call` — MCP client para downstream
+- [ ] `mal_health_check`
+- [ ] Implementar `FirestoreAdapter` + `GCSAdapter` + `SecretManagerAdapter`
+- [ ] Terraform completo + `Dockerfile` + `cloudbuild.yaml`
+- [ ] Deploy a Cloud Run (dev)
+- [ ] **Milestone**: Mismo código corriendo en local Y en GCP
+
+### Sprint 4 (Semana 7-8): Polish + Team Rollout
+
+- [ ] `mal_export_catalog` / `mal_import_catalog`
+- [ ] `mal_get_usage_stats` con logging
+- [ ] `onboard-dev.sh` (configura Claude Code + genera API key)
+- [ ] Migrar catálogo local → GCP prod
+- [ ] Terraform prod con custom domain
+- [ ] README con ejemplos de uso por tool
+- [ ] **Milestone**: Equipo completo conectado y operativo
+
+---
+
+## Convenciones
+
+### Código
+- Strict TypeScript, no `any`
+- Zod schemas con `.strict()`
+- Async/await en todas las operaciones I/O
+- Tools: `mal_{action}_{resource}` (snake_case)
+- Files: kebab-case, Interfaces: PascalCase, Constants: UPPER_SNAKE
+
+### Git
+- Branch: `feature/mal-xxx-descripcion`
+- Conventional commits: `feat:`, `fix:`, `docs:`, `infra:`
+- PR requerido para merge a `main`
+- Deploy automático a dev on merge (GCP)
+
+### Respuestas MCP
+- `response_format`: `json` | `markdown` (default: markdown)
+- `structuredContent` cuando SDK lo soporte
+- Paginación: `{ total, count, offset, has_more, next_offset }`
+- Errors: `{ isError: true, content: [{ type: "text", text: "Error: ... Try ..." }] }`
+
+---
+
+## Comandos Rápidos
+
+```bash
+# ====== CAMINO LOCAL ======
+npm run setup:local            # Inicializa SQLite + carpetas
+npm run build                  # Compila TypeScript
+npm run start:local            # stdio (para Claude Code)
+npm run start:local-http       # HTTP en localhost:3000
+npm run inspect                # MCP Inspector
+npm run seed                   # Cargar datos iniciales
+
+# ====== CAMINO GCP ======
+npm run setup:gcp              # Terraform init + apply
+npm run build
+gcloud run deploy mal-mcp-hub --source . --region us-central1
+# O push a main para deploy automático
+
+# ====== DESARROLLO ======
+npm run dev                    # Watch mode con tsx
+npm test                       # Vitest
+npm run lint                   # ESLint
+```

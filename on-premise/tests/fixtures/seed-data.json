@@ -1,0 +1,66 @@
+{
+  "skills": [
+    {
+      "id": "test-skill",
+      "name": "Test Skill",
+      "description": "A test skill for unit testing",
+      "version": "1.0.0",
+      "category": "custom",
+      "trigger_patterns": ["test"],
+      "asset_path": "skills/test-skill/SKILL.md",
+      "dependencies": [],
+      "author": "Test Author",
+      "tags": ["test"]
+    }
+  ],
+  "commands": [
+    {
+      "id": "test-command",
+      "name": "Test Command",
+      "description": "A test command for unit testing",
+      "category": "test",
+      "shell": "bash",
+      "script_template": "echo {{message}}",
+      "parameters": [
+        {
+          "name": "message",
+          "type": "string",
+          "description": "Message to echo",
+          "required": true
+        }
+      ],
+      "requires_confirmation": false,
+      "author": "Test Author",
+      "tags": ["test"]
+    }
+  ],
+  "subagents": [
+    {
+      "id": "test-subagent",
+      "name": "Test Subagent",
+      "description": "A test subagent for unit testing",
+      "system_prompt": "You are a test agent.",
+      "model": "claude-sonnet-4-5-20250929",
+      "tools_allowed": [],
+      "max_turns": 3,
+      "input_schema": {},
+      "output_format": "text",
+      "author": "Test Author",
+      "tags": ["test"]
+    }
+  ],
+  "mcps": [
+    {
+      "id": "test-mcp",
+      "name": "Test MCP",
+      "description": "A test MCP server for unit testing",
+      "transport": "streamable-http",
+      "endpoint_url": "http://localhost:9999/mcp",
+      "args": [],
+      "env_vars": {},
+      "status": "active",
+      "tools_exposed": ["test_tool"],
+      "author": "Test Author"
+    }
+  ]
+}
