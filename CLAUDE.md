@@ -1355,48 +1355,194 @@ Computed by the Sprint Reporter agent from work item completion rate vs days ela
 ### Implementation Phases
 
 ```
-Phase 5: Data Foundation          ┐
-  5.1 New SQLite tables           │ MCP Server
-  5.2 New MCP tools (20)          │ (on-premise/ + nube/)
-  5.3 Schema migration script     │
-  5.4 Seed achievements           ┘
+Phase 5: Data Foundation + Catalog Seeding  ┐
+  5.1 New SQLite tables (7)                 │ MCP Server
+  5.2 New MCP tools (20)                    │ (on-premise/ + nube/)
+  5.3 Schema migration script               │
+  5.4 Seed achievements                     │
+  5.5 Seed skills (14)                      │
+  5.6 Seed commands (14)                    │
+  5.7 Seed subagents (5)                    │
+  5.8 Register external MCPs (6)            ┘
          │
-Phase 6: LangGraph Agents        ┐
-  6.1 Interaction Analyzer        │ Python Backend
-  6.2 Sprint Reporter             │ (front/backend/)
-  6.3 Next Steps Suggester        │
-  6.4 Contribution Scorer         │
-  6.5 Agent orchestration         ┘
+Phase 6: LangGraph Agents                  ┐
+  6.1 Interaction Analyzer                  │ Python Backend
+  6.2 Sprint Reporter                       │ (front/backend/)
+  6.3 Next Steps Suggester                  │
+  6.4 Contribution Scorer                   │
+  6.5 Agent orchestration                   ┘
          │
-Phase 7: Frontend — Core Pages    ┐
-  7.1 React Router + layout       │ React Frontend
-  7.2 Sprint Board (Kanban)       │ (front/frontend/)
-  7.3 Work Item management        │
-  7.4 Interaction browser         │
-  7.5 Analytics (Recharts)        ┘
+Phase 7: Frontend — Core Pages              ┐
+  7.1 React Router + layout                 │ React Frontend
+  7.2 Sprint Board (Kanban)                 │ (front/frontend/)
+  7.3 Work Item management                  │
+  7.4 Interaction browser                   │
+  7.5 Analytics (Recharts)                  ┘
          │
-Phase 8: Gamification             ┐
-  8.1 XP engine + levels          │ Backend + Frontend
-  8.2 Achievement system          │
-  8.3 Leaderboard UI              │
-  8.4 Streak tracking             │
-  8.5 Profile pages + radar       ┘
+Phase 8: Gamification                       ┐
+  8.1 XP engine + levels                    │ Backend + Frontend
+  8.2 Achievement system                    │
+  8.3 Leaderboard UI                        │
+  8.4 Streak tracking                       │
+  8.5 Profile pages + radar                 ┘
          │
-Phase 9: Intelligence             ┐
-  9.1 Next Steps page             │ Agents + Frontend
-  9.2 Context-aware chat          │
-  9.3 Sprint health indicator     │
-  9.4 Auto-linking                │
-  9.5 Decision journal            │
-  9.6 Team Pulse digests          ┘
+Phase 9: Intelligence                       ┐
+  9.1 Next Steps page                       │ Agents + Frontend
+  9.2 Context-aware chat                    │
+  9.3 Sprint health indicator               │
+  9.4 Auto-linking                          │
+  9.5 Decision journal                      │
+  9.6 Team Pulse digests                    ┘
          │
-Phase 10: Polish                  ┐
-  10.1 Activity feed              │ Integration
-  10.2 Toast notifications        │
-  10.3 Mobile responsive          │
-  10.4 Docker Compose update      │
-  10.5 CLAUDE.md final update     ┘
+Phase 10: Polish                            ┐
+  10.1 Activity feed                        │ Integration
+  10.2 Toast notifications                  │
+  10.3 Mobile responsive                    │
+  10.4 Docker Compose update                │
+  10.5 CLAUDE.md final update               ┘
 ```
+
+### Phase 5.5 — Catalog Seeding (Skills, Commands, Subagents, External MCPs)
+
+The MCP hub must ship with a rich, useful catalog from day one — not an empty shell. This phase populates the hub with production-quality content for the team.
+
+#### External MCPs to Register (6)
+
+These are real, production-ready MCP servers the team will use through the hub's `mal_proxy_mcp_call` gateway or connect directly in Claude Code:
+
+| ID | Name | Package | Transport | Tools | Purpose |
+|----|------|---------|-----------|-------|---------|
+| `context7` | Context7 | `@upstash/context7-mcp` | stdio / HTTP (`https://mcp.context7.com/mcp`) | 2 | Up-to-date library documentation lookup. `resolve-library-id` + `query-docs`. Eliminates stale LLM knowledge. |
+| `playwright` | Playwright MCP | `@playwright/mcp` | stdio (default), SSE via `--port` | ~30 | Browser automation by Microsoft. Navigate, click, type, screenshot, PDF, accessibility snapshots. `--headless` for CI. |
+| `github` | GitHub MCP | `ghcr.io/github/github-mcp-server` (Docker) | HTTP (`https://api.githubcopilot.com/mcp/`) or stdio | 51 | Full GitHub integration: repos, issues, PRs, code search, actions, security alerts. Needs `GITHUB_TOKEN`. |
+| `memory` | Memory (Knowledge Graph) | `@modelcontextprotocol/server-memory` | stdio | 9 | Persistent knowledge graph across sessions. Create entities/relations, search nodes. Stores in local JSONL file. |
+| `sequential-thinking` | Sequential Thinking | `@modelcontextprotocol/server-sequential-thinking` | stdio | 1 | Structured multi-step reasoning. Supports revision, branching, dynamic thought chains. |
+| `brave-search` | Brave Search | `@brave/brave-search-mcp-server` | stdio / HTTP | 6 | Web, local, video, image, news search + AI summaries. Free tier available. Needs `BRAVE_API_KEY`. |
+
+**Registration format** (stored via `mal_register_mcp`):
+
+```json
+{
+  "id": "playwright",
+  "name": "Playwright MCP",
+  "description": "Browser automation by Microsoft. Navigate, click, type, screenshot, fill forms, handle dialogs. Supports Chromium, Firefox, WebKit. Use --headless for CI, --vision for coordinate-based interactions.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["@playwright/mcp@latest", "--headless"],
+  "tools_exposed": ["browser_navigate", "browser_click", "browser_type", "browser_snapshot", "browser_take_screenshot", "browser_evaluate", "browser_pdf_save"],
+  "author": "Microsoft",
+  "health_check_url": null
+}
+```
+
+#### Skills to Seed (14)
+
+Each skill gets a full SKILL.md asset with real content (instructions, examples, patterns). No placeholders.
+
+**devops (3):**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `docker-compose-patterns` | Docker Compose Patterns | Multi-service orchestration patterns, networking, volumes, health checks, dev vs prod configs. Includes MAL-specific examples (MCP + backend + frontend). |
+| `gcp-cloud-run-deploy` | GCP Cloud Run Deployment | Step-by-step Cloud Run deployment: Dockerfile, cloudbuild.yaml, IAM, VPC connector, env vars, secrets, traffic splitting, rollback. |
+| `ci-cd-pipeline` | CI/CD Pipeline Guide | Cloud Build pipeline design: build → test → scan → deploy → smoke test → rollback. Includes caching, parallel steps, secret injection. |
+
+**frontend (3):**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `react-patterns` | Modern React Patterns | Hooks composition, custom hooks, render props, compound components, context patterns, error boundaries, Suspense, React Query integration. |
+| `tailwind-design-system` | Tailwind Design System | Design tokens, custom color palettes (`mal-*`), responsive breakpoints, component recipes (buttons, cards, badges, forms), dark mode, animation utilities. |
+| `vite-optimization` | Vite Build Optimization | Code splitting, lazy routes, chunk analysis, tree shaking, asset optimization, proxy config, HMR tuning, env variable handling. |
+
+**data (3):**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `mcp-tool-development` | MCP Tool Development | How to build MCP tools with `@modelcontextprotocol/sdk`: `server.registerTool()`, Zod schemas, annotations, error handling, streaming, testing with MCP Inspector. |
+| `api-design-rest` | REST API Design | Resource naming, HTTP methods, pagination, filtering, error responses, versioning, OpenAPI spec, rate limiting, HATEOAS. Aligned with MAL backend patterns. |
+| `sqlite-patterns` | SQLite Best Practices | WAL mode, FTS5 full-text search, JSON storage, indexes, migrations, boolean handling, connection pooling, backup strategies. MAL-specific examples. |
+
+**document (3):**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `code-review-checklist` | Code Review Checklist | Security (OWASP top 10), performance, readability, testing, error handling, naming, SOLID principles. Tailored for TypeScript + Python codebases. |
+| `technical-writing` | Technical Writing Standards | CLAUDE.md structure, README conventions, API docs, inline comments, architecture diagrams (Mermaid/ASCII), changelog format, decision records (ADR). |
+| `sprint-planning-guide` | Sprint Planning Guide | Story point estimation (Fibonacci), capacity planning, sprint goal setting, backlog refinement, definition of done, velocity calculation, retrospective formats. |
+
+**custom (2):**
+
+| ID | Name | Description |
+|----|------|-------------|
+| `team-onboarding` | Team Onboarding | New member setup guide: repo clone, env setup, MCP connection, Claude Code config, first build, first test, team conventions, who to ask for what. |
+| `git-workflow-mal` | MAL Git Workflow | Branch naming (`feature/mal-xxx`), conventional commits (`feat:`, `fix:`, `docs:`), PR templates, review process, merge strategy, release flow, hotfix process. |
+
+#### Commands to Seed (14)
+
+Each command has a working `script_template` with parameterized variables. No placeholders — all scripts execute real operations.
+
+**devops (5):**
+
+| ID | Name | Shell | Description |
+|----|------|-------|-------------|
+| `start-dev-stack` | Start Dev Stack | bash | Start MCP server + backend + frontend in parallel. Checks ports, kills stale processes, validates .env files. |
+| `run-all-tests` | Run All Tests | bash | Run vitest (on-premise + nube) + pytest (front/backend) + tsc (front/frontend). Reports total pass/fail. |
+| `health-check-all` | Health Check All | bash | Curl MCP /health, backend /api/health, frontend root. Color-coded status output. |
+| `docker-build` | Docker Build | bash | Build Docker images for all services with build args, tagging, and cache optimization. |
+| `deploy-cloud-run` | Deploy to Cloud Run | bash | Submit Cloud Build, wait for deploy, run smoke test, show URL. Params: `project_id`, `region`, `tag`. |
+
+**git (4):**
+
+| ID | Name | Shell | Description |
+|----|------|-------|-------------|
+| `git-log-pretty` | Pretty Git Log | bash | `git log --oneline --graph --decorate --all` with color. Params: `count` (default 20). |
+| `create-feature-branch` | Create Feature Branch | bash | Creates `feature/mal-{{id}}-{{description}}` branch from latest dev. Params: `id`, `description`. |
+| `git-branch-cleanup` | Clean Merged Branches | bash | List and delete local branches already merged into dev/main. Asks for confirmation. |
+| `git-activity-report` | Git Activity Report | bash | Git log stats for a period: commits per author, files changed, insertions/deletions. Params: `days` (default 7). |
+
+**database (3):**
+
+| ID | Name | Shell | Description |
+|----|------|-------|-------------|
+| `sqlite-backup` | SQLite Backup | bash | Copy SQLite DB + WAL to timestamped backup file. Params: `db_path`. |
+| `seed-catalog` | Seed Catalog | node | Run the seed script to populate initial catalog data. Params: `env` (dev/prod). |
+| `reset-db` | Reset Database | bash | Drop and recreate all SQLite tables from schema.sql. **Destructive** — requires_confirmation: true. |
+
+**development (2):**
+
+| ID | Name | Shell | Description |
+|----|------|-------|-------------|
+| `lint-all` | Lint All Projects | bash | ESLint (on-premise + nube) + ruff/flake8 (front/backend) + tsc --noEmit (front/frontend). |
+| `generate-api-docs` | Generate API Docs | bash | Extract OpenAPI schema from FastAPI and generate markdown docs. |
+
+#### Subagents to Seed (5)
+
+Each subagent has a real `system_prompt` tuned for its role, specific `tools_allowed`, and appropriate `max_turns`.
+
+| ID | Name | Model | Max Turns | Tools Allowed | Description |
+|----|------|-------|-----------|---------------|-------------|
+| `code-reviewer` | Code Reviewer | claude-sonnet-4-5-20250929 | 10 | `mal_search_catalog`, `mal_get_skill_content` | Reviews code changes. Checks security (OWASP), performance, readability, test coverage. References team coding standards from skills catalog. |
+| `sprint-planner` | Sprint Planner | claude-sonnet-4-5-20250929 | 8 | `mal_list_work_items`, `mal_get_sprint`, `mal_list_interactions` | Helps plan sprints: estimates story points, identifies dependencies, balances workload, suggests sprint goals based on backlog and velocity history. |
+| `documentation-writer` | Documentation Writer | claude-sonnet-4-5-20250929 | 10 | `mal_search_catalog`, `mal_get_skill_content`, `mal_list_skills` | Generates technical documentation: CLAUDE.md updates, README files, API docs, architecture diagrams. Follows team technical-writing standards. |
+| `bug-analyzer` | Bug Analyzer | claude-sonnet-4-5-20250929 | 8 | `mal_search_catalog`, `mal_search_interactions`, `mal_get_command` | Analyzes bug reports: reproduces via descriptions, identifies root causes, suggests fixes, finds related past interactions where similar issues were discussed. |
+| `test-generator` | Test Generator | claude-sonnet-4-5-20250929 | 10 | `mal_search_catalog`, `mal_get_skill_content`, `mal_get_command` | Generates test cases (vitest for TS, pytest for Python). Covers happy paths, edge cases, error scenarios. References testing patterns from skills catalog. |
+
+#### Seed Script Design
+
+The seeding will be implemented as a script (`scripts/seed-full-catalog.ts` in on-premise/) that:
+
+1. Checks if items already exist (skip duplicates)
+2. Registers all 6 external MCPs via `mal_register_mcp`
+3. Registers all 14 skills via `mal_register_skill` with real SKILL.md content
+4. Registers all 14 commands via `mal_register_command` with working script_templates
+5. Registers all 5 subagents via `mal_register_subagent` with tuned system_prompts
+6. Seeds the 14 achievement definitions
+7. Reports: `✓ 6 MCPs, 14 skills, 14 commands, 5 subagents, 14 achievements seeded`
+
+Run via: `npm run seed:full` (on-premise) or `npm run seed:full` (nube)
+
+**Catalog totals after seeding**: 6 MCPs + 14 skills + 14 commands + 5 subagents + 14 achievements = **53 catalog entries**
 
 ### New Dependencies
 

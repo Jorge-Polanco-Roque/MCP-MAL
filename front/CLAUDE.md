@@ -336,5 +336,7 @@ Phase 9: Intelligence
   9.6 Team Pulse digests
 ```
 
-> Phase 5 (Data Foundation) is in the MCP server (on-premise/nube), not in front/.
+> Phase 5 (Data Foundation + Catalog Seeding) is in the MCP server (on-premise/nube), not in front/.
+> Phase 5.5 seeds 14 skills, 14 commands, 5 subagents, 6 external MCPs (Context7, Playwright, GitHub, Memory, Sequential Thinking, Brave Search), and 14 achievements.
 > Phases 6-9 are all in front/. Phase 10 (Polish) spans everything.
+> See root `CLAUDE.md` for the full catalog seeding spec (every item detailed with descriptions and configurations).
