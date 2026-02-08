@@ -4,19 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**mal-mcp-hub** is a centralized MCP (Model Context Protocol) server by Monterrey Agentic Labs (MAL). It serves as a library of commands, skills, subagents, and a gateway to downstream MCPs, connected to Claude Code. Built with TypeScript + Node.js, MCP SDK `^1.12.0`.
+**mal-mcp-hub** is a centralized MCP (Model Context Protocol) server by Monterrey Agentic Labs (MAL). It serves as a library of commands, skills, subagents, and a gateway to downstream MCPs. Built with TypeScript + Node.js, MCP SDK `^1.12.0`.
+
+### How MCP works: Client ↔ Server
+
+MCP follows a **client-server architecture**, similar to how a browser connects to a web server:
+
+- **MCP Server** (this project) — Runs on a machine (local or remote). Holds the database, skills, commands, and exposes 42 tools via the MCP protocol (JSON-RPC over HTTP or stdio).
+- **MCP Client** (Claude Code, front/, or any LLM tool) — Runs on the developer's machine. Connects to the MCP server to discover and call tools. The LLM (Anthropic, OpenAI) decides which tools to call based on the user's request.
+
+```
+Developer's machine                          Server (local or remote)
+┌──────────────────────┐                     ┌──────────────────────────────┐
+│  Claude Code         │  JSON-RPC (HTTP)    │  mal-mcp-hub                 │
+│  (MCP Client)        │ ◄─────────────────► │  (MCP Server)                │
+│                      │  or stdio (local)   │                              │
+│  LLM calls ──► Anthropic API              │  42 tools · DB · Skills      │
+└──────────────────────┘                     └──────────────────────────────┘
+```
+
+**Key insight**: Claude Code always runs locally on the developer's machine. It never needs to be installed on the server. Each team member runs their own Claude Code, all pointing to the same shared MCP server — just like Context7, which is a remote MCP server that stores documentation and code examples.
+
+### Deployment scenarios
+
+| Scenario | MCP Server location | Claude Code config | Use case |
+|----------|--------------------|--------------------|----------|
+| **Local dev** | `localhost:3000` (on-premise/) | `url: "http://localhost:3000/mcp"` or stdio | Solo developer, testing |
+| **Team server** | VPS/Docker on `mcp.internal:3000` | `url: "https://mcp.internal/mcp"` | Small team, shared DB |
+| **Cloud (GCP)** | Cloud Run (nube/) | `url: "https://mal-mcp-hub-xxx.run.app/mcp"` | Production, auto-scaling |
+| **Web interface** | Any of the above | front/ connects via `langchain-mcp-adapters` | Browser-based chat + dashboard |
+
+In all cases the protocol is identical — only the URL changes. Each developer configures their `~/.claude.json` to point to the shared server, and all tools, skills, leaderboard, and data are centralized.
 
 ## Repository Structure
 
 The project is split into three independent, self-contained folders:
 
-- **`on-premise/`** — Local deployment path (SQLite + filesystem + .env)
-- **`nube/`** — GCP Cloud deployment path (Firestore + GCS + Secret Manager + Cloud Run)
-- **`front/`** — Web interface (Python FastAPI + LangGraph agent + React dashboard)
+- **`on-premise/`** — Local/server deployment (SQLite + filesystem + .env). Can run on localhost or any remote machine.
+- **`nube/`** — GCP Cloud deployment (Firestore + GCS + Secret Manager + Cloud Run). Auto-scaling, managed infrastructure.
+- **`front/`** — Web interface (Python FastAPI + LangGraph agents + React dashboard). Connects to the MCP server as another client.
 
 on-premise/ and nube/ share identical business logic code (`src/tools/`, `src/schemas/`, `src/utils/`, `src/types.ts`, `src/server.ts`, `src/transport/`). They differ only in service adapters (`src/services/local/` vs `src/services/gcp/`) and entry point wiring (`src/index.ts`).
 
-front/ contains a Python backend (FastAPI + LangGraph + langchain-mcp-adapters) that connects to the MCP server, and a React frontend (Vite + Tailwind CSS) with a chat interface and catalog dashboard.
+front/ is a separate MCP client — a Python backend (FastAPI + LangGraph + langchain-mcp-adapters) that connects to the MCP server over HTTP, and a React frontend (Vite + Tailwind CSS) with a chat interface and catalog dashboard.
 
 ```
 v001/
@@ -176,73 +206,71 @@ npm run clean              # rm -rf dist node_modules
 ```bash
 # Backend (Python)
 cd front/backend
-pip install -r requirements.txt    # Install deps
-uvicorn app.main:app --reload      # Dev server on :8000
-pytest                             # Run tests
+pip install -r requirements.txt         # Install deps
+uvicorn app.main:app --reload --port 8001  # Dev server on :8001
+pytest                                  # Run tests
 
 # Frontend (React)
 cd front/frontend
-npm install                        # Install deps
-npm run dev                        # Vite dev server on :5173
-npm run build                      # Production build
+npm install                             # Install deps
+npm run dev                             # Vite dev server on :5173 (proxies to :8001)
+npm run build                           # Production build
 
 # All services (Docker)
 cd front
-docker compose up --build          # MCP :3000 + Backend :8000 + Frontend :80
+docker compose up --build               # MCP :3000 + Backend :8001 + Frontend :80
 ```
 
 ## Architecture
 
-### High-Level Diagram
+### High-Level Diagram — Multi-Client Architecture
+
+Multiple MCP clients connect to a single shared MCP server. The server can run locally or on a remote machine — the protocol is identical.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Browser (React App :5173)                     │
-│          Chat (WebSocket) + Dashboard (REST)                    │
-└──────────┬──────────────────────────┬───────────────────────────┘
-           │ WS /ws/chat              │ GET /api/*
-           ▼                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  FastAPI Backend (:8000)                         │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │              LangGraph Agent (GPT-4o)                      │ │
-│  │  START → call_model → [tool_calls?] → ToolNode → loop/END │ │
-│  └──────────────────────┬─────────────────────────────────────┘ │
-│                         │ langchain-mcp-adapters                 │
-│                         │ MultiServerMCPClient (streamable_http) │
-└─────────────────────────┼───────────────────────────────────────┘
-                          │ HTTP (MCP Streamable HTTP)
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Claude Code / LLM                        │
-│                     (MCP Client / Consumer)                     │
-└──────────────────┬──────────────────────┬───────────────────────┘
-                   │ stdio                │ Streamable HTTP
-                   │ (JSON-RPC)           │ (JSON-RPC + SSE)
-                   ▼                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       mal-mcp-hub                               │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐  │
-│  │ registry.ts│  │ skills.ts  │  │commands.ts │  │subagents │  │
-│  │  (7 tools) │  │  (2 tools) │  │ (4 tools)  │  │ (3 tools)│  │
-│  └────────────┘  └────────────┘  └────────────┘  └──────────┘  │
-│  ┌────────────┐  ┌────────────┐                                 │
-│  │mcp-proxy.ts│  │  meta.ts   │        22 tools total           │
-│  │  (2 tools) │  │  (4 tools) │                                 │
-│  └─────┬──────┘  └────────────┘                                 │
-│        │                                                        │
-│  ┌─────▼──────────────────────────────────────────────────────┐ │
-│  │              Service Interfaces (Adapter Pattern)          │ │
-│  │  IDatabase  ·  IStorage  ·  ISecrets  ·  Auth middleware   │ │
-│  └──────┬────────────┬────────────┬───────────────────────────┘ │
-└─────────┼────────────┼────────────┼─────────────────────────────┘
+   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+   │  Jorge's laptop  │  │ Enrique's laptop │  │ Emilio's laptop  │
+   │  Claude Code     │  │  Claude Code     │  │  Claude Code     │
+   │  (MCP Client)    │  │  (MCP Client)    │  │  (MCP Client)    │
+   └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+            │                     │                      │
+            └─────────┬───────────┴──────────┬───────────┘
+                      │  Streamable HTTP     │
+                      │  (JSON-RPC + SSE)    │
+                      ▼                      ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                 Browser (React App — front/)                      │
+│           Chat (WebSocket) + Dashboard (REST)                    │
+└───────────────────────────┬──────────────────────────────────────┘
+                            │ langchain-mcp-adapters (another MCP client)
+                            ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  mal-mcp-hub (MCP SERVER)                         │
+│               localhost:3000 / remote / Cloud Run                │
+│                                                                  │
+│  ┌────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐  │
+│  │ registry   │ │ skills   │ │ commands │ │ subagents        │  │
+│  │ (7 tools)  │ │ (2 tools)│ │ (4 tools)│ │ (3 tools)        │  │
+│  ├────────────┤ ├──────────┤ ├──────────┤ ├──────────────────┤  │
+│  │ mcp-proxy  │ │ meta     │ │ team     │ │ sprints/items    │  │
+│  │ (2 tools)  │ │ (4 tools)│ │ (4 tools)│ │ (8 tools)        │  │
+│  ├────────────┤ ├──────────┤ ├──────────┤ ├──────────────────┤  │
+│  │gamification│ │analytics │ │ interact │ │   42 tools total │  │
+│  │ (3 tools)  │ │ (2 tools)│ │ (3 tools)│ │                  │  │
+│  └────────────┘ └──────────┘ └──────────┘ └──────────────────┘  │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │           Service Interfaces (Adapter Pattern)             │  │
+│  │  IDatabase  ·  IStorage  ·  ISecrets  ·  Auth middleware   │  │
+│  └──────┬────────────┬────────────┬───────────────────────────┘  │
+└─────────┼────────────┼────────────┼──────────────────────────────┘
           │            │            │
     ┌─────┴────┐ ┌─────┴────┐ ┌────┴─────┐
-    │on-premise│ │on-premise│ │on-premise│     LOCAL
+    │on-premise│ │on-premise│ │on-premise│     LOCAL / REMOTE SERVER
     │ SQLite   │ │Filesystem│ │  Dotenv  │
     └──────────┘ └──────────┘ └──────────┘
     ┌──────────┐ ┌──────────┐ ┌──────────┐
-    │  nube    │ │  nube    │ │  nube    │     GCP
+    │  nube    │ │  nube    │ │  nube    │     GCP CLOUD
     │Firestore │ │   GCS    │ │ Secret   │
     │          │ │          │ │ Manager  │
     └──────────┘ └──────────┘ └──────────┘
@@ -570,25 +598,20 @@ Run with `npm run dev:local`. Tests against emulators: `npm run test:integration
 
 ## Claude Code Connection Configuration
 
-### Option A: `claude mcp add` (recommended, one command)
+Claude Code is always the **client** — it runs on each developer's local machine. The MCP server is what you deploy (locally, on a shared server, or in the cloud). Each team member configures their `~/.claude.json` to point to the same server.
 
-Run from a **regular terminal** (not inside Claude Code):
+### Option A: Local stdio (solo developer, MCP runs as subprocess)
 
-**Project scope** (only available when Claude Code is opened in the project folder):
 ```bash
-cd /Users/A1064331/Desktop/pruebas/MCP/v001
-claude mcp add mal-mcp-hub -s project -e TRANSPORT=stdio -e SQLITE_PATH=./data/catalog.db -e ASSETS_PATH=./data/assets -- node /Users/A1064331/Desktop/pruebas/MCP/v001/on-premise/dist/index.js
+# One-command setup (run from a regular terminal, not inside Claude Code):
+claude mcp add mal-mcp-hub -s user \
+  -e TRANSPORT=stdio \
+  -e SQLITE_PATH=/absolute/path/on-premise/data/catalog.db \
+  -e ASSETS_PATH=/absolute/path/on-premise/data/assets \
+  -- node /absolute/path/on-premise/dist/index.js
 ```
 
-**User scope** (available globally from any folder — use absolute paths):
-```bash
-claude mcp add mal-mcp-hub -s user -e TRANSPORT=stdio -e SQLITE_PATH=/Users/A1064331/Desktop/pruebas/MCP/v001/on-premise/data/catalog.db -e ASSETS_PATH=/Users/A1064331/Desktop/pruebas/MCP/v001/on-premise/data/assets -- node /Users/A1064331/Desktop/pruebas/MCP/v001/on-premise/dist/index.js
-```
-
-Then restart Claude Code (`claude` in terminal). Run `/mcp` to verify it appears.
-
-### Option B: on-premise stdio (manual config in `~/.claude.json`)
-
+Or manual config in `~/.claude.json`:
 ```json
 {
   "mcpServers": {
@@ -596,7 +619,7 @@ Then restart Claude Code (`claude` in terminal). Run `/mcp` to verify it appears
       "type": "stdio",
       "command": "node",
       "args": ["dist/index.js"],
-      "cwd": "/Users/A1064331/Desktop/pruebas/MCP/v001/on-premise",
+      "cwd": "/path/to/on-premise",
       "env": {
         "TRANSPORT": "stdio",
         "SQLITE_PATH": "./data/catalog.db",
@@ -607,15 +630,17 @@ Then restart Claude Code (`claude` in terminal). Run `/mcp` to verify it appears
 }
 ```
 
-### Option C: on-premise HTTP (requires server running in separate terminal)
+**When to use**: Solo development on your own machine. The MCP server starts/stops with Claude Code.
 
-Start server:
+### Option B: Local HTTP (MCP server runs independently)
+
+Start server in a separate terminal:
 ```bash
 cd on-premise
 API_KEY=<your-key> TRANSPORT=http SQLITE_PATH=./data/catalog.db ASSETS_PATH=./data/assets node dist/index.js
 ```
 
-Claude Code config:
+Claude Code config (`~/.claude.json`):
 ```json
 {
   "mcpServers": {
@@ -628,8 +653,40 @@ Claude Code config:
 }
 ```
 
-### Option D: nube — Cloud Run (requires GCP deployment)
+**When to use**: Local development when you want the MCP server to persist across Claude Code sessions, or when front/ also connects to it.
 
+### Option C: Remote server (team shared — recommended for teams)
+
+Deploy on-premise/ on any server (VPS, internal machine, Docker) and expose port 3000 behind HTTPS (nginx + Let's Encrypt, or cloud load balancer).
+
+Each team member's `~/.claude.json`:
+```json
+{
+  "mcpServers": {
+    "mal-mcp-hub": {
+      "type": "http",
+      "url": "https://mcp.yourdomain.com/mcp",
+      "headers": { "x-api-key": "<personal-api-key>" }
+    }
+  }
+}
+```
+
+```
+Jorge's Claude Code ──►  ┌──────────────────────┐
+Enrique's Claude Code ──►│  mcp.yourdomain.com  │◄── front/ (React + FastAPI)
+Emilio's Claude Code ──► │  mal-mcp-hub         │
+Román's Claude Code ──►  │  SQLite · Skills · DB │
+                         └──────────────────────┘
+```
+
+**When to use**: Team of 2+ developers sharing the same catalog, leaderboard, sprints, and skills. All Claude Code instances point to the same URL. The server holds the single source of truth.
+
+This is the same architecture as **Context7** — a remote MCP server that multiple Claude Code clients connect to. The only difference is that you own and control the server.
+
+### Option D: GCP Cloud Run (production, auto-scaling)
+
+Deploy nube/ via Terraform or Cloud Build:
 ```json
 {
   "mcpServers": {
@@ -641,6 +698,20 @@ Claude Code config:
   }
 }
 ```
+
+**When to use**: Production deployment with auto-scaling (0→10 instances), Firestore (no SQLite concurrency limits), managed HTTPS, monitoring, and CI/CD.
+
+### What changes between options
+
+| Component | Option A (stdio) | Option B-D (HTTP) |
+|-----------|-------------------|---------------------|
+| **Server lifecycle** | Starts/stops with Claude Code | Runs independently, shared |
+| **Network** | stdin/stdout (local process) | HTTP/HTTPS (local or remote) |
+| **Multi-user** | Single user only | Multiple users, shared DB |
+| **Config in Claude Code** | `type: "stdio"` + command | `type: "http"` + URL + API key |
+| **Protocol** | JSON-RPC over stdio | JSON-RPC over Streamable HTTP |
+
+The 42 MCP tools, the protocol, and all functionality are identical regardless of which option you choose.
 
 ## Manual Testing (HTTP mode with curl)
 
