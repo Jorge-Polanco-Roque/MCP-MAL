@@ -1,4 +1,4 @@
-"""Tests for agent graph construction."""
+"""Tests for the main chat agent graph construction."""
 from unittest.mock import patch, MagicMock
 
 from langchain_core.tools import tool
@@ -26,8 +26,11 @@ def test_build_agent_creates_compiled_graph():
 
 
 def test_system_prompt_contains_tool_descriptions():
-    """System prompt should describe available MCP tools."""
+    """System prompt should describe available MCP tools (42 total)."""
     from app.agent.prompts import SYSTEM_PROMPT
     assert "mal_list_skills" in SYSTEM_PROMPT
     assert "mal_search_catalog" in SYSTEM_PROMPT
     assert "mal_health_check" in SYSTEM_PROMPT
+    # Phase 5 tools
+    assert "mal_log_interaction" in SYSTEM_PROMPT
+    assert "mal_get_leaderboard" in SYSTEM_PROMPT

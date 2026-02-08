@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusCard } from "./StatusCard";
 import { StatsSection } from "./StatsSection";
 import { CatalogList } from "./CatalogList";
+import { ActivityFeed } from "./ActivityFeed";
 
 export function DashboardPanel() {
   return (
@@ -18,6 +19,7 @@ export function DashboardPanel() {
       <ScrollArea className="flex-1 p-4 space-y-4">
         <div className="space-y-4">
           <StatusCard />
+          <ActivityFeed />
           <StatsSection />
 
           <Tabs defaultValue="skills">

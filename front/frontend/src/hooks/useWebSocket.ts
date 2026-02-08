@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type ConnectionStatus = "connected" | "disconnected" | "reconnecting";
+
 interface UseWebSocketOptions {
   url: string;
   onMessage: (data: string) => void;
-  reconnectInterval?: number;
   maxRetries?: number;
 }
 
 export function useWebSocket({
   url,
   onMessage,
-  reconnectInterval = 3000,
   maxRetries = 10,
 }: UseWebSocketOptions) {
-  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const wsRef = useRef<WebSocket | null>(null);
   const retriesRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -25,7 +25,7 @@ export function useWebSocket({
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setConnected(true);
+      setStatus("connected");
       retriesRef.current = 0;
     };
 
@@ -34,17 +34,21 @@ export function useWebSocket({
     };
 
     ws.onclose = () => {
-      setConnected(false);
       if (retriesRef.current < maxRetries) {
         retriesRef.current++;
-        reconnectTimerRef.current = setTimeout(connect, reconnectInterval);
+        setStatus("reconnecting");
+        // Exponential backoff: 1s, 2s, 4s, 8s... capped at 30s
+        const delay = Math.min(1000 * Math.pow(2, retriesRef.current - 1), 30000);
+        reconnectTimerRef.current = setTimeout(connect, delay);
+      } else {
+        setStatus("disconnected");
       }
     };
 
     ws.onerror = () => {
       ws.close();
     };
-  }, [url, onMessage, reconnectInterval, maxRetries]);
+  }, [url, onMessage, maxRetries]);
 
   useEffect(() => {
     connect();
@@ -60,5 +64,5 @@ export function useWebSocket({
     }
   }, []);
 
-  return { connected, send };
+  return { connected: status === "connected", status, send };
 }

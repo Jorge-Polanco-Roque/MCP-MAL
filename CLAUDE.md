@@ -788,6 +788,16 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 18. **LangGraph `on_chat_model_stream` content types** (fixed) — The `chunk.content` in `on_chat_model_stream` events can be a `str`, a `list` of dicts (e.g. `[{"type": "text", "text": "..."}]`), or other types depending on the model provider. The `_extract_content()` helper in `chat.py` normalizes all content types to a plain string before sending to the WebSocket client.
 
+19. **`contributions` table missing `updated_at`** (fixed) — The `contributions` table in `schema.sql` only had `created_at` but `SQLiteAdapter.create()` always adds `updated_at`. Fix: added `updated_at TEXT NOT NULL DEFAULT (datetime('now'))` column to the table definition.
+
+20. **`SQLiteAdapter.create()` with empty id for AUTOINCREMENT tables** (fixed) — When `id=""` was passed (for tables with `INTEGER PRIMARY KEY AUTOINCREMENT` like `contributions`), the adapter would insert an empty string into an INTEGER column causing a "datatype mismatch" error. Fix: `create()` now only sets `obj.id` when `id` is truthy, filters the `id` key from INSERT when empty, and uses `result.lastInsertRowid` to return the auto-generated id.
+
+21. **`user_achievements` table missing `updated_at` for default ORDER BY** (fixed) — `db.list()` defaults to `ORDER BY updated_at DESC`. Tables without `updated_at` (like `user_achievements`) would fail with "no such column". Fix: all `db.list()` calls on `user_achievements` now explicitly pass `order_by: "unlocked_at"`, and `contributions` calls use `order_by: "created_at"`.
+
+22. **`tool.ainvoke()` returns list not object** (fixed) — `langchain-mcp-adapters` `tool.ainvoke()` returns a raw `list` of dicts (`[{'type': 'text', 'text': '...'}]`), not an object with `.content`. The backend's `_call_tool()` in `data.py` and `dashboard.py` assumed `result.content` existed and fell back to `str(result)`, producing a Python repr string instead of clean markdown. Fix: both files now check `isinstance(result, list)` first and extract the `text` field from each dict via `_extract_text()` helper.
+
+23. **Leaderboard disconnected from git activity** (fixed) — `mal_get_leaderboard` reads `team_members` (XP-based), while `mal_get_commit_activity` reads `git log`. These were completely independent, so the leaderboard never reflected real commit work. Fix: `mal_get_commit_activity` now auto-syncs — it matches git authors to `team_members` (by email, then by name prefix), logs each commit as a `contribution` (deduped by commit SHA), awards XP (10 base + 1 per 100 lines, cap 50), and updates level/streak. The tool is no longer `readOnlyHint: true`. Git author display names are resolved to team member names (e.g. "Jorge Polanco" → "Jorge").
+
 ## Conventions
 
 - Strict TypeScript, no `any`

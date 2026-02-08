@@ -13,39 +13,54 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_agent = None
+# Global agent registry: {"chat": agent, "interaction_analyzer": agent, ...}
+_agents: dict = {}
 
 
-def get_agent():
-    return _agent
+def get_agent(name: str = "chat"):
+    """Get a named agent from the registry."""
+    return _agents.get(name)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize MCP client and agent on startup, cleanup on shutdown."""
-    global _agent
+    """Initialize MCP client and all agents on startup, cleanup on shutdown."""
+    global _agents
     from app.mcp.client import create_mcp_client, get_mcp_tools, close_mcp_client
     from app.agent.graph import build_agent
+    from app.agent.interaction_analyzer import build_interaction_analyzer
+    from app.agent.sprint_reporter import build_sprint_reporter
+    from app.agent.next_steps import build_next_steps_suggester
+    from app.agent.contribution_scorer import build_contribution_scorer
 
     try:
         await create_mcp_client()
         tools = await get_mcp_tools()
-        _agent = build_agent(tools)
-        logger.info("Agent ready with %d tools", len(tools))
+        logger.info("Loaded %d MCP tools", len(tools))
+
+        # Build all agents with the same tool set (each filters its own subset)
+        _agents["chat"] = build_agent(tools)
+        _agents["interaction_analyzer"] = build_interaction_analyzer(tools)
+        _agents["sprint_reporter"] = build_sprint_reporter(tools)
+        _agents["next_steps"] = build_next_steps_suggester(tools)
+        _agents["contribution_scorer"] = build_contribution_scorer(tools)
+
+        built = [name for name, agent in _agents.items() if agent is not None]
+        logger.info("Agents ready: %s (%d/%d)", ", ".join(built), len(built), len(_agents))
     except Exception:
-        logger.exception("Failed to initialize agent — running in degraded mode")
-        _agent = None
+        logger.exception("Failed to initialize agents — running in degraded mode")
+        _agents = {}
 
     yield
 
     await close_mcp_client()
-    _agent = None
+    _agents.clear()
     logger.info("Shutdown complete")
 
 
 app = FastAPI(
     title="MAL MCP Hub Frontend API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

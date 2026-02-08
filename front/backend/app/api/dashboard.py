@@ -1,14 +1,28 @@
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 from fastapi import APIRouter
 
 from app.config import settings
-from app.models.schemas import HealthResponse, StatsResponse
+from app.models.schemas import HealthResponse
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+
+def _extract_text(content: Any) -> str:
+    """Extract plain text from LangChain MCP tool content (list of dicts or string)."""
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item.get("text", ""))
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts)
+    return str(content)
 
 
 def _mcp_health_url() -> str:
@@ -22,7 +36,7 @@ def _mcp_health_url() -> str:
 
 @router.get("/health")
 async def health() -> HealthResponse:
-    """Check health of backend and MCP server."""
+    """Check health of backend, MCP server, and agents."""
     mcp_status = "unknown"
     tools_count = 0
 
@@ -44,10 +58,15 @@ async def health() -> HealthResponse:
     except Exception:
         agent_status = "not_ready"
 
+    # Report which agents are available
+    from app.main import _agents
+    agents_available = [name for name, agent in _agents.items() if agent is not None]
+
     return HealthResponse(
         mcp_status=mcp_status,
         agent_status=agent_status,
         tools_count=tools_count,
+        agents_available=agents_available,
         timestamp=datetime.now(timezone.utc),
     )
 
@@ -78,8 +97,8 @@ async def list_catalog(collection: str, category: str | None = None, limit: int 
             args["category"] = category
 
         result = await tool.ainvoke(args)
-        content = result.content if hasattr(result, "content") else str(result)
-        return {"collection": collection, "data": content}
+        content = result if isinstance(result, list) else (result.content if hasattr(result, "content") else str(result))
+        return {"collection": collection, "data": _extract_text(content)}
 
     except Exception as e:
         logger.exception("Catalog list error")
@@ -107,8 +126,8 @@ async def get_catalog_item(collection: str, item_id: str):
             return {"error": f"Tool {tool_name} not found"}
 
         result = await tool.ainvoke({"id": item_id})
-        content = result.content if hasattr(result, "content") else str(result)
-        return {"collection": collection, "id": item_id, "data": content}
+        content = result if isinstance(result, list) else (result.content if hasattr(result, "content") else str(result))
+        return {"collection": collection, "id": item_id, "data": _extract_text(content)}
 
     except Exception as e:
         logger.exception("Catalog get error")
@@ -126,8 +145,8 @@ async def get_stats():
             return {"error": "mal_get_usage_stats tool not found"}
 
         result = await tool.ainvoke({})
-        content = result.content if hasattr(result, "content") else str(result)
-        return {"data": content}
+        content = result if isinstance(result, list) else (result.content if hasattr(result, "content") else str(result))
+        return {"data": _extract_text(content)}
 
     except Exception as e:
         logger.exception("Stats error")

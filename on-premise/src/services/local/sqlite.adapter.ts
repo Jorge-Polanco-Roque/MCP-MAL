@@ -60,19 +60,27 @@ export class SQLiteAdapter implements IDatabase {
 
   async create<T>(collection: string, id: string, data: T): Promise<T> {
     const obj = data as Record<string, unknown>;
-    obj.id = id;
+    if (id) {
+      obj.id = id;
+    }
     const now = new Date().toISOString();
     obj.created_at = obj.created_at ?? now;
-    obj.updated_at = obj.updated_at ?? now;
+    if (!("updated_at" in obj) || obj.updated_at === undefined) {
+      obj.updated_at = now;
+    }
 
-    const keys = Object.keys(obj);
+    const keys = Object.keys(obj).filter((k) => k !== "id" || id);
     const placeholders = keys.map(() => "?").join(", ");
     const values = keys.map((k) => this.serializeValue(obj[k]));
 
     const stmt = this.db.prepare(
       `INSERT INTO "${collection}" (${keys.map(k => `"${k}"`).join(", ")}) VALUES (${placeholders})`
     );
-    stmt.run(...values);
+    const result = stmt.run(...values);
+
+    if (!id) {
+      obj.id = result.lastInsertRowid;
+    }
 
     return this.deserializeRow<T>(obj);
   }

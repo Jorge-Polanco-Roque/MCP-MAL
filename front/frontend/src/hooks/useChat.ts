@@ -1,11 +1,14 @@
 import { useCallback, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import type { ChatMessage, StreamChunk, ToolCallInfo } from "../lib/types";
 import { generateId } from "../lib/utils";
 import { useWebSocket } from "./useWebSocket";
+import { fetchProjectContext } from "../lib/api";
 
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [contextEnabled, setContextEnabled] = useState(false);
   const currentAssistantRef = useRef<string | null>(null);
   const toolCallsRef = useRef<ToolCallInfo[]>([]);
 
@@ -16,13 +19,18 @@ export function useChat() {
     "/ws/chat";
 
   const handleMessage = useCallback((raw: string) => {
-    const chunk: StreamChunk = JSON.parse(raw);
+    let chunk: StreamChunk;
+    try {
+      chunk = JSON.parse(raw);
+    } catch {
+      console.warn("Received malformed WebSocket message:", raw);
+      return;
+    }
 
     switch (chunk.type) {
       case "token": {
         const id = currentAssistantRef.current;
         if (!id) {
-          // First token — create assistant message
           const newId = generateId();
           currentAssistantRef.current = newId;
           setMessages((prev) => [
@@ -53,7 +61,6 @@ export function useChat() {
           };
           toolCallsRef.current = [...toolCallsRef.current, info];
 
-          // Ensure assistant message exists
           if (!currentAssistantRef.current) {
             const newId = generateId();
             currentAssistantRef.current = newId;
@@ -83,7 +90,6 @@ export function useChat() {
 
       case "tool_result": {
         if (chunk.tool_call) {
-          // Update last tool call with result
           const calls = toolCallsRef.current;
           const lastIdx = calls.findIndex(
             (tc) =>
@@ -148,13 +154,13 @@ export function useChat() {
     }
   }, []);
 
-  const { connected, send } = useWebSocket({
+  const { connected, status: wsStatus, send } = useWebSocket({
     url: wsUrl,
     onMessage: handleMessage,
   });
 
   const sendMessage = useCallback(
-    (content: string) => {
+    async (content: string) => {
       if (!content.trim() || isStreaming) return;
 
       const userMsg: ChatMessage = {
@@ -166,20 +172,43 @@ export function useChat() {
       setMessages((prev) => [...prev, userMsg]);
       setIsStreaming(true);
 
-      // Send with history for context
       const history = messages.map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      send(JSON.stringify({ message: content, history }));
+      // Fetch project context if enabled (first message or on demand)
+      let context = "";
+      if (contextEnabled) {
+        try {
+          const ctx = await fetchProjectContext();
+          context = ctx.context;
+        } catch {
+          toast.error("Context fetch failed — sending without context");
+        }
+      }
+
+      send(JSON.stringify({ message: content, history, context }));
     },
-    [send, messages, isStreaming]
+    [send, messages, isStreaming, contextEnabled]
   );
 
   const clearMessages = useCallback(() => {
     setMessages([]);
   }, []);
 
-  return { messages, sendMessage, clearMessages, isStreaming, connected };
+  const toggleContext = useCallback(() => {
+    setContextEnabled((prev) => !prev);
+  }, []);
+
+  return {
+    messages,
+    sendMessage,
+    clearMessages,
+    isStreaming,
+    connected,
+    wsStatus,
+    contextEnabled,
+    toggleContext,
+  };
 }

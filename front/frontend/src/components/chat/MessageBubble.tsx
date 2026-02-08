@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import { Bot, User } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib/utils";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { ToolCallCard } from "./ToolCallCard";
+import { findLinks } from "@/lib/autolink";
 import type { ChatMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
@@ -11,8 +12,30 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
 }
 
+/** Pre-process text to convert @user, #sprint-id, WI-xxx → markdown links */
+function applyAutolinks(text: string): string {
+  const links = findLinks(text);
+  if (links.length === 0) return text;
+  let result = text;
+  // Apply in reverse order to preserve indices
+  for (const link of [...links].reverse()) {
+    const idx = result.indexOf(link.raw);
+    if (idx >= 0) {
+      result =
+        result.slice(0, idx) +
+        `[${link.raw}](${link.href})` +
+        result.slice(idx + link.raw.length);
+    }
+  }
+  return result;
+}
+
 export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const processedContent = useMemo(
+    () => (isUser ? message.content : applyAutolinks(message.content)),
+    [message.content, isUser]
+  );
 
   return (
     <div className={cn("flex gap-3 py-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -25,7 +48,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
 
-      <div className={cn("max-w-[80%] space-y-1", isUser ? "items-end" : "items-start")}>
+      <div className={cn("max-w-[90%] space-y-1 sm:max-w-[80%]", isUser ? "items-end" : "items-start")}>
         <div
           className={cn(
             "rounded-xl px-4 py-2.5",
@@ -39,7 +62,7 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           ) : (
             <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
+                {processedContent}
               </ReactMarkdown>
               {isStreaming && !message.content && (
                 <span className="inline-block h-4 w-1 animate-pulse bg-gray-400" />

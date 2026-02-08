@@ -4,42 +4,47 @@
 
 `front/` is the web interface for **MAL MCP Hub** (Monterrey Agentic Labs). It consists of:
 
-- **Backend** (Python): FastAPI server with a LangGraph agent that connects to the MCP server via `langchain-mcp-adapters`
-- **Frontend** (TypeScript): React + Tailwind CSS dashboard with real-time chat via WebSocket
+- **Backend** (Python): FastAPI server with 5 LangGraph agents that connect to the MCP server (42 tools) via `langchain-mcp-adapters`
+- **Frontend** (TypeScript): React multi-page app with real-time chat, sprint board, analytics, gamification, and intelligence features
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    Browser (React App)                        │
-│  ┌─────────────────────────┐  ┌────────────────────────────┐ │
-│  │     Chat Panel          │  │    Dashboard Panel         │ │
-│  │  WebSocket /ws/chat     │  │  REST /api/catalog, etc.   │ │
-│  └───────────┬─────────────┘  └──────────┬─────────────────┘ │
-└──────────────┼───────────────────────────┼───────────────────┘
-               │ WebSocket                 │ HTTP
-               ▼                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│                  FastAPI Backend (:8000)                      │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │                   LangGraph Agent                        ││
-│  │  START → call_model (GPT-4o) → [tool_calls?]            ││
-│  │           ↓ yes                    ↓ no                  ││
-│  │         ToolNode ──────────────► END                     ││
-│  │        (MCP tools)                                       ││
-│  └────────────┬─────────────────────────────────────────────┘│
-│               │                                              │
-│  ┌────────────▼─────────────────────────────────────────────┐│
-│  │      langchain-mcp-adapters (MultiServerMCPClient)       ││
-│  │      transport: streamable_http                          ││
-│  └────────────┬─────────────────────────────────────────────┘│
-└───────────────┼──────────────────────────────────────────────┘
-                │ HTTP (Streamable HTTP MCP)
-                ▼
-┌──────────────────────────────────────────────────────────────┐
-│              mal-mcp-hub (on-premise :3000)                   │
-│              22 MCP tools · SQLite · Filesystem               │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     Browser (React App)                          │
+│  ┌────────────────────┐ ┌──────────────────┐ ┌───────────────┐  │
+│  │  Chat (WS)         │ │  Sprints/Backlog │ │  Analytics    │  │
+│  │  Next Steps (WS)   │ │  Leaderboard     │ │  Profile      │  │
+│  │  Sprint Report (WS)│ │  Decisions       │ │  Catalog      │  │
+│  └────────┬───────────┘ └────────┬─────────┘ └──────┬────────┘  │
+└───────────┼──────────────────────┼───────────────────┼───────────┘
+            │ WebSocket            │ REST               │ REST
+            ▼                      ▼                    ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   FastAPI Backend (:8001)                         │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │              5 LangGraph Agents (GPT-4o)                   │  │
+│  │  ┌─────────┐ ┌───────────────┐ ┌──────────────────────┐   │  │
+│  │  │  Chat   │ │ Interaction   │ │  Sprint Reporter     │   │  │
+│  │  │  Agent  │ │ Analyzer      │ │                      │   │  │
+│  │  └─────────┘ └───────────────┘ └──────────────────────┘   │  │
+│  │  ┌─────────────────┐ ┌────────────────────────────────┐   │  │
+│  │  │ Next Steps      │ │ Contribution Scorer            │   │  │
+│  │  │ Suggester       │ │                                │   │  │
+│  │  └─────────────────┘ └────────────────────────────────┘   │  │
+│  └──────────────────────────┬─────────────────────────────────┘  │
+│                             │                                    │
+│  ┌──────────────────────────▼─────────────────────────────────┐  │
+│  │       langchain-mcp-adapters (MultiServerMCPClient)        │  │
+│  │       transport: streamable_http                           │  │
+│  └──────────────────────────┬─────────────────────────────────┘  │
+└─────────────────────────────┼────────────────────────────────────┘
+                              │ HTTP (Streamable HTTP MCP)
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│               mal-mcp-hub (on-premise :3000)                     │
+│               42 MCP tools · SQLite · Filesystem                 │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Directory Structure
@@ -55,57 +60,97 @@ front/
 │   ├── Dockerfile
 │   ├── .env.example
 │   ├── app/
-│   │   ├── main.py               ← FastAPI + lifespan (MCP init/shutdown)
+│   │   ├── main.py               ← FastAPI + lifespan (MCP init + 5 agents)
 │   │   ├── config.py             ← pydantic-settings
 │   │   ├── agent/
-│   │   │   ├── graph.py          ← LangGraph StateGraph (call_model + tools)
+│   │   │   ├── graph.py          ← Chat agent: StateGraph (call_model + tools)
 │   │   │   ├── state.py          ← AgentState (MessagesState)
-│   │   │   └── prompts.py        ← System prompt
+│   │   │   └── prompts.py        ← System prompt (describes 42 tools)
+│   │   ├── agents/
+│   │   │   ├── interaction_analyzer.py  ← Summarizes conversations, extracts decisions
+│   │   │   ├── sprint_reporter.py       ← Sprint summaries + velocity analysis
+│   │   │   ├── next_steps.py            ← Context-aware AI suggestions
+│   │   │   ├── contribution_scorer.py   ← XP scoring + achievement checks
+│   │   │   └── prompts.py               ← Agent-specific system prompts
 │   │   ├── mcp/
 │   │   │   └── client.py         ← MultiServerMCPClient lifecycle
 │   │   ├── api/
-│   │   │   ├── chat.py           ← WebSocket /ws/chat
-│   │   │   ├── dashboard.py      ← REST /api/health, /api/catalog, /api/stats
+│   │   │   ├── chat.py           ← WebSocket /ws/chat, /ws/sprint-report, /ws/next-steps
+│   │   │   ├── agents.py         ← POST /api/analyze-interaction, /api/sprint-report, etc.
+│   │   │   ├── dashboard.py      ← GET /api/health, /api/catalog, /api/stats
+│   │   │   ├── data.py           ← GET/POST sprints, work-items, interactions, analytics, activity
 │   │   │   └── router.py         ← APIRouter aggregation
 │   │   └── models/
 │   │       └── schemas.py        ← Pydantic models
 │   └── tests/
 │       ├── conftest.py
-│       ├── test_agent.py
-│       └── test_api.py
+│       ├── test_agent.py         ← 2 tests (graph compilation, prompt content)
+│       ├── test_agents.py        ← 11 tests (all 4 agents build + filter tools)
+│       └── test_api.py           ← 1 test (health endpoint)
 │
 └── frontend/
     ├── package.json
-    ├── vite.config.ts            ← proxy /api→:8000, /ws→:8000
+    ├── vite.config.ts            ← proxy /api→backend, /ws→backend
     ├── tailwind.config.ts
-    ├── Dockerfile
-    ├── nginx.conf                ← proxy for production
+    ├── Dockerfile                ← multi-stage: node build → nginx:alpine
+    ├── nginx.conf                ← SPA routing + API/WS proxy
     ├── index.html
     └── src/
-        ├── main.tsx              ← React + QueryClientProvider
-        ├── App.tsx               ← 2-column layout (chat + dashboard)
+        ├── main.tsx              ← React + BrowserRouter + QueryClient + Toaster
+        ├── App.tsx               ← React Router with 10 routes under Layout
+        │
         ├── components/
+        │   ├── layout/
+        │   │   ├── Layout.tsx          ← Header + mobile nav + sidebar + ErrorBoundary
+        │   │   └── Sidebar.tsx         ← Collapsible desktop nav (9 items)
         │   ├── chat/
-        │   │   ├── ChatPanel.tsx
-        │   │   ├── MessageBubble.tsx
-        │   │   ├── MessageInput.tsx
-        │   │   └── ToolCallCard.tsx
+        │   │   ├── ChatPanel.tsx       ← Chat with context toggle + reconnection status
+        │   │   ├── MessageBubble.tsx   ← Markdown + autolinks + tool call cards
+        │   │   ├── MessageInput.tsx    ← Textarea + send button
+        │   │   └── ToolCallCard.tsx    ← Expandible tool call display
         │   ├── dashboard/
-        │   │   ├── DashboardPanel.tsx
-        │   │   ├── CatalogList.tsx
-        │   │   ├── StatusCard.tsx
-        │   │   └── StatsSection.tsx
-        │   └── ui/               ← shadcn-style components
+        │   │   ├── DashboardPanel.tsx  ← Status + activity feed + stats + catalog tabs
+        │   │   ├── ActivityFeed.tsx    ← Recent interactions + top contributors
+        │   │   ├── CatalogList.tsx     ← Skills/commands/subagents/mcps list
+        │   │   ├── StatusCard.tsx      ← MCP health indicator
+        │   │   └── StatsSection.tsx    ← Catalog totals
+        │   ├── gamification/
+        │   │   ├── XpBar.tsx           ← XP progress bar with level name
+        │   │   ├── LevelBadge.tsx      ← Circular badge color-coded by tier
+        │   │   ├── AchievementCard.tsx ← Achievement with tier/category/lock state
+        │   │   └── StreakIndicator.tsx ← Fire icon with streak days
+        │   ├── intelligence/
+        │   │   ├── TeamPulse.tsx       ← 4-metric team activity digest
+        │   │   └── SprintHealthBadge.tsx ← Green/yellow/red sprint health
+        │   └── ui/               ← shadcn-style: button, card, badge, tabs, scroll-area, error-boundary, data-card
+        │
+        ├── pages/
+        │   ├── ChatPage.tsx            ← Chat + dashboard sidebar
+        │   ├── SprintsPage.tsx         ← Sprint board with 4 Kanban columns
+        │   ├── BacklogPage.tsx         ← Work items with filters + create form
+        │   ├── InteractionsPage.tsx    ← Search + type filter
+        │   ├── AnalyticsPage.tsx       ← Recharts bar chart + TeamPulse + leaderboard
+        │   ├── LeaderboardPage.tsx     ← Ranked table with medals/XP/level/streak
+        │   ├── ProfilePage.tsx         ← Team member profile + XP bar + achievements
+        │   ├── NextStepsPage.tsx       ← AI streaming suggestions via WebSocket
+        │   ├── DecisionsPage.tsx       ← Decision journal with quick filter tags
+        │   └── CatalogPage.tsx         ← Catalog browser (wraps DashboardPanel)
+        │
         ├── hooks/
-        │   ├── useChat.ts        ← chat state + WebSocket
-        │   ├── useWebSocket.ts   ← connection management
-        │   └── useCatalog.ts     ← React Query hooks
+        │   ├── useChat.ts              ← Chat state + WS + context injection
+        │   ├── useWebSocket.ts         ← Connection + exponential backoff reconnect
+        │   ├── useCatalog.ts           ← React Query: health, catalog, stats
+        │   └── useData.ts             ← React Query: sprints, work-items, interactions, analytics, team, achievements, activity feed
+        │
         ├── lib/
-        │   ├── api.ts            ← REST fetch wrappers
-        │   ├── types.ts          ← TypeScript types
-        │   └── utils.ts          ← cn(), formatDate()
+        │   ├── api.ts                  ← 20+ REST fetch wrappers
+        │   ├── types.ts               ← TypeScript types (Sprint, WorkItem, Achievement, etc.)
+        │   ├── utils.ts               ← cn(), formatDate(), generateId()
+        │   ├── gamification.ts         ← calculateLevel(), levelName(), XP formula, tier styles
+        │   └── autolink.ts            ← @user, #sprint-id, WI-xxx → markdown links
+        │
         └── styles/
-            └── globals.css       ← Tailwind + custom styles
+            └── globals.css            ← Tailwind + custom scrollbar + typewriter cursor
 ```
 
 ## Setup & Run
@@ -129,7 +174,7 @@ cp .env.example .env
 # Set OPENAI_API_KEY, MCP_SERVER_URL, MCP_API_KEY
 
 # Run
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 ### Frontend
@@ -140,7 +185,7 @@ npm install
 npm run dev    # → http://localhost:5173
 ```
 
-Vite proxies `/api` and `/ws` to the backend at `:8000`.
+Vite proxies `/api` and `/ws` to the backend.
 
 ### Docker Compose (all 3 services)
 
@@ -148,21 +193,23 @@ Vite proxies `/api` and `/ws` to the backend at `:8000`.
 cd front
 OPENAI_API_KEY=sk-... MCP_API_KEY=dev-key docker compose up --build
 # Frontend: http://localhost:80
-# Backend:  http://localhost:8000
+# Backend:  http://localhost:8001
 # MCP:      http://localhost:3000
 ```
+
+All 3 services have health checks. Backend waits for MCP to be healthy. Frontend waits for backend.
 
 ### Run Tests
 
 ```bash
-# Backend
+# Backend (14 tests)
 cd front/backend
-pip install -e ".[dev]"
-pytest
+source .venv/bin/activate
+python -m pytest tests/ -v
 
-# Frontend
+# Frontend (type-check + build)
 cd front/frontend
-npm run build    # type-check
+npm run build
 ```
 
 ## API Endpoints
@@ -171,7 +218,9 @@ npm run build    # type-check
 
 | Endpoint | Description |
 |----------|-------------|
-| `WS /ws/chat` | Chat with the LangGraph agent. Send `{"message": "...", "history": [...]}`, receive streaming chunks. |
+| `WS /ws/chat` | Chat with the main agent. Send `{"message": "...", "history": [...], "context": "..."}`. |
+| `WS /ws/sprint-report` | Stream sprint report. Send `{"sprint_id": "...", "repo_path": "...", "days": 14}`. |
+| `WS /ws/next-steps` | Stream AI suggestions. Send `{"user_id": "...", "sprint_id": "..."}`. |
 
 ### WebSocket Message Types (server → client)
 
@@ -183,14 +232,89 @@ npm run build    # type-check
 | `error` | Error occurred |
 | `done` | Response complete |
 
-### REST
+### REST — Dashboard
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/health` | Backend + MCP server health |
+| `GET /api/health` | Backend + MCP server health, tools count, agents available |
 | `GET /api/catalog/{collection}` | List items (skills, commands, subagents, mcps) |
 | `GET /api/catalog/{collection}/{id}` | Get single item detail |
 | `GET /api/stats` | Catalog usage statistics |
+
+### REST — Data
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/sprints` | List sprints (optional `?status=active`) |
+| `GET /api/sprints/{id}` | Get sprint details |
+| `POST /api/sprints` | Create sprint |
+| `PUT /api/sprints/{id}` | Update sprint |
+| `GET /api/work-items` | List work items (optional `?sprint_id=&status=&priority=&assignee_id=`) |
+| `GET /api/work-items/{id}` | Get work item |
+| `POST /api/work-items` | Create work item |
+| `PUT /api/work-items/{id}` | Update work item |
+| `GET /api/interactions` | List interactions (optional `?user_id=&type=`) |
+| `GET /api/interactions/search?q=` | Full-text search interactions |
+| `GET /api/analytics/commits?days=30` | Commit activity data |
+| `GET /api/analytics/leaderboard?limit=20` | Team leaderboard |
+| `GET /api/analytics/sprint-report/{id}` | Sprint analytics report |
+| `GET /api/team` | List team members |
+| `GET /api/team/{id}` | Get team member profile |
+| `GET /api/achievements` | List achievements (optional `?user_id=&category=`) |
+| `GET /api/context` | Project context for chat injection |
+| `GET /api/activity?limit=20` | Activity feed (interactions + top contributors) |
+
+### REST — Agents
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/analyze-interaction` | Run interaction analyzer agent |
+| `POST /api/sprint-report` | Run sprint reporter agent |
+| `POST /api/next-steps` | Run next steps suggester agent |
+| `POST /api/score-contribution` | Run contribution scorer agent |
+
+## LangGraph Agents (5 total)
+
+All agents follow: `StateGraph(AgentState) → call_model → conditional → tools → loop → END`
+
+| Agent | File | Tools | Purpose |
+|-------|------|-------|---------|
+| **Chat** | `agent/graph.py` | All 42 MCP tools | Main chat interface |
+| **Interaction Analyzer** | `agents/interaction_analyzer.py` | 5 tools | Summarize conversations, extract decisions |
+| **Sprint Reporter** | `agents/sprint_reporter.py` | 6 tools | Sprint summaries, velocity, retrospectives |
+| **Next Steps Suggester** | `agents/next_steps.py` | 6 tools | AI-powered prioritized recommendations |
+| **Contribution Scorer** | `agents/contribution_scorer.py` | 5 tools | Score contributions, award XP, unlock achievements |
+
+## Frontend Pages (10 routes)
+
+| Route | Page | Features |
+|-------|------|----------|
+| `/` | Chat | 2-column: chat panel + dashboard sidebar, context toggle |
+| `/sprints` | Sprint Board | Sprint selector + 4-column Kanban (todo/in-progress/done/blocked) |
+| `/backlog` | Backlog | Work items with status/priority filters, inline create form |
+| `/interactions` | History | Full-text search + type filter |
+| `/analytics` | Analytics | Recharts bar chart (commits), TeamPulse, leaderboard, sprint overview |
+| `/leaderboard` | Leaderboard | Ranked table with medals, XP, level badges, streak, role |
+| `/profile/:userId` | Profile | Team member card, XP bar, stats, achievements |
+| `/next-steps` | Next Steps | AI streaming via WebSocket, sprint ID input |
+| `/decisions` | Decisions | Decision journal with quick filter tags |
+| `/catalog` | Catalog | Skills/commands/subagents/mcps browser with tabs |
+
+## Gamification System
+
+XP formula (mirrors server-side `calculateLevel()`):
+
+| XP Range | XP per Level | Levels |
+|----------|-------------|--------|
+| 0–500 | 100 | 1–5 |
+| 500–2000 | 300 | 6–10 |
+| 2000–5000 | 600 | 11–15 |
+| 5000–10000 | 1000 | 16–20 |
+| 10000+ | 2000 | 21+ |
+
+20 level names: Apprentice → Initiate → Novice → Acolyte → Practitioner → Journeyman → Artisan → Specialist → Expert → Veteran → Master → Champion → Hero → Legend → Sage → Oracle → Titan → Paragon → Luminary → Architect
+
+4 tiers: Bronze (levels 1-5), Silver (6-10), Gold (11-15), Platinum (16+)
 
 ## Environment Variables
 
@@ -199,52 +323,68 @@ npm run build    # type-check
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key |
 | `MCP_SERVER_URL` | Yes | `http://localhost:3000/mcp` | MCP server URL |
 | `MCP_API_KEY` | Yes | — | MCP server API key |
-| `BACKEND_PORT` | No | `8000` | FastAPI port |
+| `BACKEND_PORT` | No | `8001` | FastAPI port |
 | `CORS_ORIGINS` | No | `http://localhost:5173` | CORS origins |
 | `OPENAI_MODEL` | No | `gpt-4o` | OpenAI model |
 | `LOG_LEVEL` | No | `info` | Log level |
 
 ## Key Design Decisions
 
-1. **LangGraph over direct OpenAI**: Structured agent loop with tool node, supports streaming, easy to extend with more nodes
-2. **langchain-mcp-adapters**: Bridges MCP tools to LangChain tools natively via `MultiServerMCPClient`
-3. **WebSocket for chat**: Real-time streaming of tokens and tool calls (SSE would also work but WS is bidirectional)
-4. **REST for dashboard**: Static data that doesn't need streaming, cacheable with React Query
-5. **Vite proxy**: In dev, Vite proxies API/WS to the backend. In prod, nginx handles routing.
+1. **LangGraph multi-agent**: 5 specialized agents with tool filtering (not all 42 tools per agent)
+2. **langchain-mcp-adapters**: Bridges MCP tools to LangChain tools via `MultiServerMCPClient`
+3. **WebSocket for streaming**: Real-time token + tool call streaming for chat, sprint reports, next steps
+4. **REST for data**: Cacheable endpoints with React Query (30s stale time)
+5. **Context-aware chat**: Optional project context injection (active sprints, open items, commits)
+6. **Auto-linking**: `@user`, `#sprint-id`, `WI-xxx` converted to markdown links in messages
+7. **ErrorBoundary**: React class component wraps page content for graceful error recovery
+8. **Exponential backoff**: WebSocket reconnection with 1s→2s→4s...30s cap, max 10 retries
 
 ## Known Fixes & Gotchas
 
-1. **`langchain-mcp-adapters` 0.1.0+ API change** (fixed) — `MultiServerMCPClient` can no longer be used as an async context manager. Calling `__aenter__()`/`__aexit__()` raises `NotImplementedError`. The correct pattern is:
-   ```python
-   client = MultiServerMCPClient(config)
-   tools = await client.get_tools()  # async, opens a session per tool call
-   ```
-   No explicit close needed. See `app/mcp/client.py`.
+1. **`langchain-mcp-adapters` 0.1.0+ API change** (fixed) — `MultiServerMCPClient` cannot be used as async context manager. Pattern: `client = MultiServerMCPClient(config)` → `await client.get_tools()`.
 
-2. **`on_tool_start` event contains non-serializable `ToolRuntime`** (fixed) — When streaming via `agent.astream_events(version="v2")`, the `on_tool_start` event's `data["input"]` dict contains a `runtime` key with an internal LangGraph `ToolRuntime` object (state, config, callbacks, etc.). This is not JSON-serializable and will crash `json.dumps()`. The fix in `app/api/chat.py` filters internal keys (`runtime`, `config`, `callbacks`, `store`, `context`) via `_safe_args()` before sending to the WebSocket client.
+2. **`on_tool_start` non-serializable `ToolRuntime`** (fixed) — `_safe_args()` filters internal keys (`runtime`, `config`, `callbacks`, `store`, `context`) before JSON serialization.
 
-3. **`chunk.content` can be string or list** (fixed) — In `on_chat_model_stream` events, `chunk.content` from OpenAI is typically a `str`, but can also be a `list[dict]` (e.g. `[{"type": "text", "text": "..."}]`) depending on the model/provider. The `_extract_content()` helper normalizes all variants to a plain string.
+3. **`chunk.content` polymorphism** (fixed) — `_extract_content()` normalizes string/list/dict variants to plain string.
 
-4. **Port 8000 may be occupied** — On some dev machines port 8000 is already in use. If so, run the backend on another port (`uvicorn app.main:app --port 8001`) and update `vite.config.ts` proxy targets to match.
+4. **Port 8000 may be occupied** — Run backend on another port and update `vite.config.ts` proxy targets.
 
-5. **Test mocking paths** — The FastAPI lifespan uses local imports (`from app.mcp.client import ...`), so test patches must target `app.mcp.client.create_mcp_client` (not `app.main.create_mcp_client`). See `tests/test_api.py`.
+5. **Test mocking paths** — Patches must target `app.mcp.client.create_mcp_client`.
+
+6. **WebSocket JSON.parse crash** (fixed Phase 10) — `useChat.ts` wraps `JSON.parse()` in try-catch with console.warn fallback.
+
+7. **Weak ID generation** (fixed Phase 10) — Replaced `Math.random().toString(36)` with `crypto.randomUUID()`.
+
+8. **Context fetch failure silent** (fixed Phase 10) — Shows toast notification "Context fetch failed — sending without context".
+
+9. **`tool.ainvoke()` returns `list`, not object with `.content`** (fixed) — `langchain-mcp-adapters` `tool.ainvoke()` returns a raw Python `list` of dicts `[{'type': 'text', 'text': '...'}]`, **not** an object with a `.content` attribute. The original code did `result.content if hasattr(result, "content") else str(result)`, which fell through to `str()` producing Python repr strings like `"[{'type': 'text', ...}]"`. Fix: always check `isinstance(result, list)` first, then extract text from each dict. Applied in both `data.py` (`_call_tool()`) and `dashboard.py` (`_extract_text()` helper).
+
+10. **Backend port default changed to 8001** — Port 8000 was occupied by another project in the dev environment. Default `BACKEND_PORT` is now `8001`. The `vite.config.ts` proxy targets and `.env` are aligned to this port.
+
+11. **uvicorn `--reload` required for development** — Without the `--reload` flag, code changes to FastAPI endpoints are not picked up until manual restart. Always start with `uvicorn app.main:app --reload --port 8001` during development.
+
+12. **Leaderboard auto-sync from git** — `mal_get_commit_activity` now auto-syncs git authors to `team_members` and logs contributions. The leaderboard reflects real git activity without manual intervention. Git authors are matched by email first, then by name prefix. Commits are deduped by SHA hash so calling the tool multiple times is safe. XP formula: 10 base + 1 per 100 lines changed (cap 50).
+
+## Team Members
+
+Registered in the on-premise SQLite database:
+
+| ID | Name | Role | Email (git match) |
+|----|------|------|--------------------|
+| `jorge` | Jorge | lead | `55784702+Jorge-Polanco-Roque@users.noreply.github.com` |
+| `enrique` | Enrique | lead | — |
+| `emilio` | Emilio | lead | — |
+| `roman` | Román | lead | — |
+
+XP is auto-synced from git commits via `mal_get_commit_activity`. To add new members, use `mal_register_team_member` or insert into `team_members` table. Set `email` to the git author email for automatic matching.
 
 ## Test Status
 
-- **Unit tests** (pytest): 3/3 passing
+- **Backend tests** (pytest): 14/14 passing
   - `test_agent.py` — 2 tests (graph compilation with mock LLM, system prompt content)
-  - `test_api.py` — 1 test (health endpoint returns correct schema)
-- **Frontend build**: TypeScript strict + Vite — 0 errors, 387 kB bundle
-- **E2E verified** (manual, all passing):
-  - MCP connection: 22 tools loaded via `streamable_http`
-  - `GET /api/health` → `mcp_status: online, agent_status: ready, tools_count: 22`
-  - `GET /api/catalog/skills` → returns catalog data
-  - `GET /api/stats` → returns usage stats
-  - `WS /ws/chat` with real GPT-4o:
-    - "Lista todos los skills" → `mal_list_skills` called → markdown table response
-    - "Check server health" → `mal_health_check` called → health report
-    - "Search catalog for prueba" → `mal_search_catalog` called → search results
-  - Frontend Vite proxy → all `/api/*` and `/ws/*` routes proxied correctly
+  - `test_agents.py` — 11 tests (4 agents build, filter tools, prompt validation)
+  - `test_api.py` — 1 test (health endpoint schema)
+- **Frontend build**: TypeScript strict + Vite — 0 errors, ~832 kB bundle
 
 ## Conventions
 
@@ -253,90 +393,15 @@ npm run build    # type-check
 - Components: functional, hooks-based, no class components
 - State: React Query for server state, useState/useRef for local state
 - Styling: Tailwind CSS with custom `mal-*` color palette
+- Mutations: toast notifications on success/error via `react-hot-toast`
+- Mobile: responsive padding (`px-4 sm:px-6`), hidden columns on small screens, horizontal scroll for tables
 
-## Roadmap: Next Steps for front/
+## Implementation Phases (all complete)
 
-> Full roadmap details (data model, all 20 new MCP tools, architecture diagrams) are in the root `CLAUDE.md` under **"Roadmap: Team Collaboration Platform"**.
-
-### Summary of What's Coming
-
-The front/ evolves from a 2-panel chat+dashboard into a **multi-page team collaboration platform**:
-
-**Backend — LangGraph Multi-Agent System**:
-- 4 new specialized LangGraph agents (all GPT-4o):
-  - **Interaction Analyzer** — Summarizes conversations, extracts decisions and action items, auto-links to sprints/work items
-  - **Sprint Reporter** — Generates sprint summaries, velocity analysis, retrospectives, burndown data
-  - **Next Steps Suggester** — Context-aware suggestions grounded in real MCP data (open items, recent activity, sprint timeline)
-  - **Contribution Scorer** — Evaluates commits/interactions/completions, awards XP, checks achievement unlocks
-- New REST endpoints for sprints, work items, team, leaderboard, analytics
-- New WebSocket events for agent streaming (same pattern as existing chat)
-- Git integration module for commit analytics (`git log` parsing)
-- Scheduled tasks: achievement checks, Team Pulse digests
-
-**Frontend — Multi-Page App with Gamification**:
-- React Router v6 for navigation (/, /chat, /sprint, /backlog, /analytics, /leaderboard, /next-steps, /history, /profile/:id, /catalog)
-- Sprint Board — Kanban with drag-and-drop (`@dnd-kit`)
-- Work Item management — create, filter, assign, prioritize
-- Analytics — Commit graphs, velocity charts, burndown, contribution heatmaps (`recharts`)
-- Leaderboard — XP rankings, level progression, streak tracking
-- Achievements — Unlockable badges with toast notifications
-- Profile pages — Skill radar chart, contribution graph, achievement showcase
-- Next Steps page — AI-generated prioritized suggestions with reasoning
-- Interaction browser — Full-text search through past conversations
-- XP bar + level indicator always visible in header
-- Context-aware chat — Agent auto-receives sprint goals, open items, recent decisions
-- **Explicit placeholder policy**: Any demo/seed data shows `[SAMPLE DATA]` badge — never silently fake real data
-
-**New Dependencies**:
-```
-# Backend (Python)
-langgraph-checkpoint>=2.0.0
-apscheduler>=3.10.0
-
-# Frontend (npm)
-react-router-dom@^6
-recharts@^2.12
-@dnd-kit/core@^6
-@dnd-kit/sortable@^8
-date-fns@^3
-react-hot-toast@^2
-framer-motion@^11
-```
-
-### Implementation Order
-
-```
-Phase 6: LangGraph Agents (backend)
-  6.1 Interaction Analyzer agent
-  6.2 Sprint Reporter agent
-  6.3 Next Steps Suggester agent
-  6.4 Contribution Scorer agent
-  6.5 Agent orchestration + new REST/WS endpoints
-
-Phase 7: Frontend Core Pages
-  7.1 React Router + new layout with sidebar nav
-  7.2 Sprint Board (Kanban)
-  7.3 Work Item management
-  7.4 Interaction browser
-  7.5 Analytics dashboards (Recharts)
-
-Phase 8: Gamification
-  8.1 XP engine + level calculation
-  8.2 Achievement system + toast notifications
-  8.3 Leaderboard UI
-  8.4 Streak tracking
-  8.5 Profile pages + skill radar
-
-Phase 9: Intelligence
-  9.1 Next Steps page
-  9.2 Context-aware chat (context injection)
-  9.3 Sprint health indicator
-  9.4 Auto-linking (mentions → entities)
-  9.5 Decision journal
-  9.6 Team Pulse digests
-```
-
-> Phase 5 (Data Foundation + Catalog Seeding) is in the MCP server (on-premise/nube), not in front/.
-> Phase 5.5 seeds 14 skills, 14 commands, 5 subagents, 6 external MCPs (Context7, Playwright, GitHub, Memory, Sequential Thinking, Brave Search), and 14 achievements.
-> Phases 6-9 are all in front/. Phase 10 (Polish) spans everything.
-> See root `CLAUDE.md` for the full catalog seeding spec (every item detailed with descriptions and configurations).
+| Phase | Scope | Status |
+|-------|-------|--------|
+| Phase 6 | LangGraph Agents (4 specialized + orchestration) | Done |
+| Phase 7 | Frontend Core Pages (Sprint Board, Backlog, Interactions, Analytics) | Done |
+| Phase 8 | Gamification (XP engine, achievements, leaderboard, profiles) | Done |
+| Phase 9 | Intelligence (Next Steps, context-aware chat, auto-linking, decisions, TeamPulse) | Done |
+| Phase 10 | Polish (activity feed, toasts, error boundary, mobile responsive, Docker, docs) | Done |

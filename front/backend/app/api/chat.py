@@ -66,7 +66,7 @@ async def chat_websocket(ws: WebSocket):
 
             from app.main import get_agent
 
-            agent = get_agent()
+            agent = get_agent("chat")
             if agent is None:
                 await ws.send_text(json.dumps({
                     "type": "error",
@@ -80,7 +80,19 @@ async def chat_websocket(ws: WebSocket):
                     messages.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
                     messages.append(AIMessage(content=msg["content"]))
-            messages.append(HumanMessage(content=user_message))
+
+            # Context-aware chat: inject project context into the message
+            context = payload.get("context", "")
+            if context:
+                enriched = (
+                    f"[PROJECT CONTEXT — use this to ground your answers]\n"
+                    f"{context}\n"
+                    f"[END CONTEXT]\n\n"
+                    f"{user_message}"
+                )
+                messages.append(HumanMessage(content=enriched))
+            else:
+                messages.append(HumanMessage(content=user_message))
 
             try:
                 async for event in agent.astream_events(

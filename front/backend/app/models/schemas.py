@@ -36,6 +36,7 @@ class HealthResponse(BaseModel):
     mcp_status: str
     agent_status: str
     tools_count: int
+    agents_available: list[str] = []
     timestamp: datetime
 
 

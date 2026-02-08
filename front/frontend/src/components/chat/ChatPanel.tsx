@@ -1,13 +1,23 @@
 import { useEffect, useRef } from "react";
-import { MessageSquare, Trash2, Wifi, WifiOff } from "lucide-react";
+import { MessageSquare, Trash2, Wifi, WifiOff, RefreshCw, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./MessageBubble";
 import { MessageInput } from "./MessageInput";
 import { useChat } from "@/hooks/useChat";
+import { cn } from "@/lib/utils";
 
 export function ChatPanel() {
-  const { messages, sendMessage, clearMessages, isStreaming, connected } = useChat();
+  const {
+    messages,
+    sendMessage,
+    clearMessages,
+    isStreaming,
+    connected,
+    wsStatus,
+    contextEnabled,
+    toggleContext,
+  } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,11 +35,33 @@ export function ChatPanel() {
           <h2 className="font-semibold">Chat</h2>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleContext}
+            className={cn(
+              "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+              contextEnabled
+                ? "bg-yellow-100 text-yellow-700"
+                : "text-gray-400 hover:text-gray-600"
+            )}
+            title={
+              contextEnabled
+                ? "Context-aware: Active sprints & work items injected"
+                : "Click to enable context-aware mode"
+            }
+          >
+            <Brain className="h-3.5 w-3.5" />
+            {contextEnabled ? "Context ON" : "Context"}
+          </button>
           <span className="flex items-center gap-1 text-xs">
-            {connected ? (
+            {wsStatus === "connected" ? (
               <>
                 <Wifi className="h-3 w-3 text-green-500" />
                 <span className="text-green-600">Connected</span>
+              </>
+            ) : wsStatus === "reconnecting" ? (
+              <>
+                <RefreshCw className="h-3 w-3 animate-spin text-yellow-500" />
+                <span className="text-yellow-600">Reconnecting...</span>
               </>
             ) : (
               <>
@@ -57,9 +89,14 @@ export function ChatPanel() {
             </p>
             <div className="mt-6 space-y-2 text-xs text-gray-400">
               <p>"List all DevOps skills"</p>
-              <p>"Search for deployment commands"</p>
-              <p>"Show me the catalog stats"</p>
+              <p>"What are the open work items?"</p>
+              <p>"Generate a sprint report"</p>
             </div>
+            {contextEnabled && (
+              <p className="mt-4 rounded-md bg-yellow-50 px-3 py-1.5 text-xs text-yellow-700">
+                Context mode enabled — project state will be injected automatically
+              </p>
+            )}
           </div>
         ) : (
           <div className="py-4">
