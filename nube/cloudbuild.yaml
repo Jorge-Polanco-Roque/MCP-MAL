@@ -1,16 +1,20 @@
 steps:
+  # 1. Install dependencies
   - name: 'node:20'
     entrypoint: npm
     args: ['ci']
 
+  # 2. Build TypeScript
   - name: 'node:20'
     entrypoint: npm
     args: ['run', 'build']
 
+  # 3. Run tests
   - name: 'node:20'
     entrypoint: npm
     args: ['test']
 
+  # 4. Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -20,13 +24,28 @@ steps:
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:latest'
       - '.'
 
+  # 5. Vulnerability scan
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'artifacts'
+      - 'docker'
+      - 'images'
+      - 'scan'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:$COMMIT_SHA'
+      - '--format=json'
+    allowFailure: true
+
+  # 6. Push Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - '--all-tags'
       - '${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub'
 
+  # 7. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy
     entrypoint: gcloud
     args:
       - 'run'
@@ -34,6 +53,23 @@ steps:
       - 'mal-mcp-hub'
       - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/mal-registry/mal-mcp-hub:$COMMIT_SHA'
       - '--region=${_REGION}'
+
+  # 8. Smoke test — verify /health returns 200
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: smoke-test
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        SERVICE_URL=$(gcloud run services describe mal-mcp-hub --region=${_REGION} --format='value(status.url)')
+        echo "Smoke testing: $${SERVICE_URL}/health"
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$${SERVICE_URL}/health" --max-time 10)
+        if [ "$$STATUS" != "200" ]; then
+          echo "Smoke test FAILED (HTTP $$STATUS). Rolling back..."
+          gcloud run services update-traffic mal-mcp-hub --region=${_REGION} --to-revisions=LATEST=0
+          exit 1
+        fi
+        echo "Smoke test PASSED (HTTP $$STATUS)"
 
 substitutions:
   _REGION: us-central1

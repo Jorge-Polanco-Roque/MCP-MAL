@@ -5,10 +5,10 @@ import type { PaginatedResult, QueryOptions } from "../../types.js";
 export class FirestoreAdapter implements IDatabase {
   private firestore: Firestore;
 
-  constructor(projectId: string) {
+  constructor(projectId: string, databaseId: string = "mal-catalog") {
     this.firestore = new Firestore({
       projectId,
-      databaseId: "mal-catalog",
+      databaseId,
     });
   }
 
@@ -22,7 +22,7 @@ export class FirestoreAdapter implements IDatabase {
     const limit = Math.min(options?.limit ?? 20, 100);
     const offset = options?.offset ?? 0;
 
-    let query: FirebaseFirestore.Query = this.firestore.collection(collection);
+    let baseQuery: FirebaseFirestore.Query = this.firestore.collection(collection);
 
     // Apply filters
     if (options?.filters) {
@@ -30,9 +30,9 @@ export class FirestoreAdapter implements IDatabase {
         if (typeof value === "string" && value.includes(",")) {
           // Tag search: array-contains-any
           const tags = value.split(",").map((t) => t.trim());
-          query = query.where(key, "array-contains-any", tags);
+          baseQuery = baseQuery.where(key, "array-contains-any", tags);
         } else {
-          query = query.where(key, "==", value);
+          baseQuery = baseQuery.where(key, "==", value);
         }
       }
     }
@@ -40,18 +40,14 @@ export class FirestoreAdapter implements IDatabase {
     // Order
     const orderBy = options?.order_by ?? "updated_at";
     const orderDir = options?.order_dir ?? "desc";
-    query = query.orderBy(orderBy, orderDir);
+    baseQuery = baseQuery.orderBy(orderBy, orderDir);
 
-    // Get total count (Firestore doesn't have native COUNT, use aggregation)
-    const countSnapshot = await this.firestore
-      .collection(collection)
-      .count()
-      .get();
+    // Get total count using the filtered query (not unfiltered collection)
+    const countSnapshot = await baseQuery.count().get();
     const total = countSnapshot.data().count;
 
     // Apply pagination
-    query = query.offset(offset).limit(limit);
-    const snapshot = await query.get();
+    const snapshot = await baseQuery.offset(offset).limit(limit).get();
 
     const items = snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -119,9 +115,15 @@ export class FirestoreAdapter implements IDatabase {
       return { items: [], total: 0, has_more: false };
     }
 
-    const snapshot = await this.firestore
+    const searchQuery = this.firestore
       .collection(collection)
-      .where("search_tokens", "array-contains-any", tokens)
+      .where("search_tokens", "array-contains-any", tokens);
+
+    // Get total count for the search query
+    const countSnapshot = await searchQuery.count().get();
+    const total = countSnapshot.data().count;
+
+    const snapshot = await searchQuery
       .offset(offset)
       .limit(limit)
       .get();
@@ -133,8 +135,9 @@ export class FirestoreAdapter implements IDatabase {
 
     return {
       items,
-      total: items.length,
-      has_more: false, // Firestore doesn't give total for filtered queries easily
+      total,
+      has_more: total > offset + items.length,
+      next_offset: total > offset + items.length ? offset + items.length : undefined,
     };
   }
 

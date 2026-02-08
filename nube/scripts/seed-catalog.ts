@@ -8,7 +8,7 @@ if (!PROJECT_ID) {
 
 const firestore = new Firestore({
   projectId: PROJECT_ID,
-  databaseId: "mal-catalog",
+  databaseId: process.env.FIRESTORE_DATABASE_ID || "mal-catalog",
 });
 
 function generateSearchTokens(obj: Record<string, unknown>): string[] {

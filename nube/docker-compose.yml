@@ -1,0 +1,61 @@
+services:
+  firestore-emulator:
+    image: google/cloud-sdk:latest
+    command: >
+      gcloud beta emulators firestore start
+      --host-port=0.0.0.0:8080
+      --project=mal-dev
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  gcs-emulator:
+    image: fsouza/fake-gcs-server
+    command: ["-scheme", "http", "-port", "4443", "-external-url", "http://gcs-emulator:4443"]
+    ports:
+      - "4443:4443"
+    volumes:
+      - gcs-data:/storage
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4443/storage/v1/b"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - TRANSPORT=http
+      - INFRA_MODE=gcp
+      - FIRESTORE_PROJECT=mal-dev
+      - FIRESTORE_EMULATOR_HOST=firestore-emulator:8080
+      - FIRESTORE_DATABASE_ID=mal-catalog
+      - GCS_BUCKET=mal-mcp-assets
+      - GCP_PROJECT_ID=mal-dev
+      - STORAGE_EMULATOR_HOST=http://gcs-emulator:4443
+      - API_KEY=dev-key-123
+      - SESSION_TIMEOUT_MS=1800000
+      - MAX_SESSIONS=50
+      - LOG_LEVEL=debug
+      - NODE_ENV=development
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+      gcs-emulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  gcs-data:

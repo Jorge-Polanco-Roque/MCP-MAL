@@ -1,0 +1,10 @@
+project_id            = "your-prod-project-id"
+region                = "us-central1"
+min_instances         = 1
+max_instances         = 10
+alert_email           = "ops@example.com"
+enable_cloud_armor    = true
+session_timeout_ms    = 1800000
+max_sessions          = 100
+cors_origins          = ""
+firestore_database_id = "mal-catalog"

@@ -28,35 +28,50 @@ vi.mock("@google-cloud/firestore", () => {
     },
   });
 
-  const mockCollection = (name: string) => ({
-    doc: (id: string) => mockDoc(name, id),
-    count: () => ({
-      get: async () => ({
-        data: () => ({ count: store.get(name)?.size ?? 0 }),
-      }),
-    }),
-    orderBy: () => ({
-      offset: () => ({
-        limit: () => ({
-          get: async () => ({
-            docs: Array.from(store.get(name)?.entries() ?? []).map(([id, data]) => ({
-              id,
-              data: () => data,
-            })),
-          }),
+  const mockCollection = (name: string) => {
+    const getFilteredEntries = (filter?: { key: string; value: unknown }) => {
+      const col = store.get(name);
+      if (!col) return [];
+      let entries = Array.from(col.entries());
+      if (filter) {
+        entries = entries.filter(([, data]) => data[filter.key] === filter.value);
+      }
+      return entries;
+    };
+
+    const buildQuery = (filter?: { key: string; value: unknown }): Record<string, unknown> => {
+      const countFn = () => ({
+        get: async () => {
+          const entries = getFilteredEntries(filter);
+          return { data: () => ({ count: entries.length }) };
+        },
+      });
+
+      const offsetFn = (off: number) => ({
+        limit: (lim: number) => ({
+          get: async () => {
+            const entries = getFilteredEntries(filter).slice(off, off + lim);
+            return {
+              docs: entries.map(([id, data]) => ({ id, data: () => data })),
+            };
+          },
         }),
-      }),
-    }),
-    where: () => ({
-      offset: () => ({
-        limit: () => ({
-          get: async () => ({
-            docs: [],
-          }),
-        }),
-      }),
-    }),
-  });
+      });
+
+      return {
+        orderBy: () => ({ offset: offsetFn, count: countFn }),
+        count: countFn,
+        offset: offsetFn,
+        where: (key: string, _op: string, value: unknown) => buildQuery({ key, value }),
+      };
+    };
+
+    return {
+      doc: (id: string) => mockDoc(name, id),
+      ...buildQuery(),
+      where: (key: string, _op: string, value: unknown) => buildQuery({ key, value }),
+    };
+  };
 
   return {
     Firestore: class {
@@ -83,6 +98,12 @@ describe("FirestoreAdapter", () => {
   it("should instantiate with a project ID", async () => {
     const { FirestoreAdapter } = await import("../../src/services/gcp/firestore.adapter.js");
     const adapter = new FirestoreAdapter("test-project");
+    expect(adapter).toBeDefined();
+  });
+
+  it("should instantiate with custom database ID", async () => {
+    const { FirestoreAdapter } = await import("../../src/services/gcp/firestore.adapter.js");
+    const adapter = new FirestoreAdapter("test-project", "custom-db");
     expect(adapter).toBeDefined();
   });
 
@@ -115,5 +136,67 @@ describe("FirestoreAdapter", () => {
     const adapter = new FirestoreAdapter("test-project");
     const result = await adapter.get("skills", "non-existent");
     expect(result).toBeNull();
+  });
+
+  it("should update a record", async () => {
+    const { FirestoreAdapter } = await import("../../src/services/gcp/firestore.adapter.js");
+    const adapter = new FirestoreAdapter("test-project");
+
+    await adapter.create("skills", "upd-1", {
+      id: "upd-1",
+      name: "Original",
+      description: "Before update",
+      version: "1.0.0",
+      category: "custom",
+    });
+
+    const updated = await adapter.update<Record<string, unknown>>("skills", "upd-1", {
+      name: "Updated",
+      description: "After update",
+    });
+
+    expect(updated.name).toBe("Updated");
+    expect(updated.description).toBe("After update");
+  });
+
+  it("should delete a record", async () => {
+    const { FirestoreAdapter } = await import("../../src/services/gcp/firestore.adapter.js");
+    const adapter = new FirestoreAdapter("test-project");
+
+    await adapter.create("skills", "del-1", {
+      id: "del-1",
+      name: "To Delete",
+      description: "Will be deleted",
+      version: "1.0.0",
+      category: "custom",
+    });
+
+    await adapter.delete("skills", "del-1");
+    const result = await adapter.get("skills", "del-1");
+    expect(result).toBeNull();
+  });
+
+  it("should list with pagination", async () => {
+    const { FirestoreAdapter } = await import("../../src/services/gcp/firestore.adapter.js");
+    const adapter = new FirestoreAdapter("test-project");
+
+    for (let i = 0; i < 5; i++) {
+      await adapter.create("paginated", `item-${i}`, {
+        id: `item-${i}`,
+        name: `Item ${i}`,
+        description: `Description ${i}`,
+        category: "test",
+      });
+    }
+
+    const page1 = await adapter.list("paginated", { limit: 2, offset: 0 });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.total).toBe(5);
+    expect(page1.has_more).toBe(true);
+    expect(page1.next_offset).toBe(2);
+
+    const page3 = await adapter.list("paginated", { limit: 2, offset: 4 });
+    expect(page3.items).toHaveLength(1);
+    expect(page3.has_more).toBe(false);
   });
 });

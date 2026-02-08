@@ -5,18 +5,29 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 vi.mock("@google-cloud/firestore", () => ({
   Firestore: class {
     collection() {
+      const countFn = () => ({ get: async () => ({ data: () => ({ count: 0 }) }) });
       return {
         doc: () => ({
           get: async () => ({ exists: false, data: () => null }),
           set: async () => {},
         }),
-        count: () => ({
-          get: async () => ({ data: () => ({ count: 0 }) }),
-        }),
+        count: countFn,
         orderBy: () => ({
+          count: countFn,
           offset: () => ({
             limit: () => ({
               get: async () => ({ docs: [] }),
+            }),
+          }),
+        }),
+        where: () => ({
+          count: countFn,
+          orderBy: () => ({
+            count: countFn,
+            offset: () => ({
+              limit: () => ({
+                get: async () => ({ docs: [] }),
+              }),
             }),
           }),
         }),

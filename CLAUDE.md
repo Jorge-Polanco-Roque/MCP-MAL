@@ -60,28 +60,52 @@ v001/
 │       └── tools/
 │           ├── registry.test.ts              ← 2 tests
 │           └── commands.test.ts              ← 2 tests
-└── nube/                          ← GCP Cloud deployment
+└── nube/                          ← GCP Cloud deployment (production-ready)
     ├── package.json
     ├── tsconfig.json
-    ├── Dockerfile                 ← multi-stage build
-    ├── cloudbuild.yaml            ← CI/CD pipeline
+    ├── Dockerfile                 ← multi-stage, non-root, healthcheck
+    ├── docker-compose.yml         ← local dev with Firestore + GCS emulators
+    ├── cloudbuild.yaml            ← CI/CD: build → test → scan → deploy → smoke test
+    ├── .env.example               ← all env vars documented
+    ├── README.md                  ← full deployment + troubleshooting docs
     ├── src/
-    │   ├── index.ts               ← entry point (Firestore + GCS + SecretManager)
+    │   ├── index.ts               ← entry point + graceful shutdown (SIGTERM/SIGINT)
     │   ├── server.ts              ← same as on-premise
     │   ├── tools/                 ← same 6 files as on-premise
     │   ├── schemas/               ← same as on-premise
     │   ├── services/
+    │   │   ├── database.ts        ← IDatabase interface
+    │   │   ├── storage.ts         ← IStorage interface (+ optional contentType)
+    │   │   ├── secrets.ts         ← ISecrets interface
+    │   │   ├── auth.ts            ← timing-safe, multi-key, rate limiting
     │   │   └── gcp/
-    │   │       ├── firestore.adapter.ts     ← search_tokens + array-contains-any
-    │   │       ├── gcs.adapter.ts           ← signed URLs
-    │   │       └── secret-manager.adapter.ts ← 5-min cache
-    │   ├── transport/             ← same as on-premise
+    │   │       ├── firestore.adapter.ts     ← configurable DB ID, fixed search total
+    │   │       ├── gcs.adapter.ts           ← retry + backoff, content-type, size limit
+    │   │       └── secret-manager.adapter.ts ← 10s timeout, configurable cache TTL
+    │   ├── transport/
+    │   │   ├── http.ts            ← session timeout + max limit, helmet, CORS, TransportHandle
+    │   │   └── stdio.ts           ← StdioServerTransport
     │   └── utils/                 ← same as on-premise
     ├── tests/
-    │   ├── services/firestore.adapter.test.ts  ← 5 tests
-    │   └── tools/registry.test.ts              ← 1 test
+    │   ├── services/
+    │   │   ├── firestore.adapter.test.ts  ← 9 tests (CRUD, pagination, update, delete)
+    │   │   └── auth.test.ts               ← 6 tests (timing-safe, multi-key, rate limit)
+    │   ├── tools/
+    │   │   ├── registry.test.ts           ← 1 test
+    │   │   └── commands.test.ts           ← 2 tests
+    │   ├── transport/
+    │   │   └── http.test.ts               ← 2 tests (startup, shutdown)
+    │   └── fixtures/
+    │       └── seed-data.json
     └── terraform/
-        └── main.tf               ← Cloud Run, Firestore, GCS, Secret Manager, Artifact Registry
+        ├── main.tf                ← Cloud Run, Firestore, GCS, VPC connector
+        ├── firestore.tf           ← 7 composite indexes + daily backup
+        ├── monitoring.tf          ← uptime check + 3 alert policies
+        ├── cloud-armor.tf         ← optional WAF rate limiting
+        ├── variables.tf           ← 10 variables (6 new)
+        ├── outputs.tf             ← 7 outputs (4 new)
+        ├── dev.tfvars             ← development config
+        └── prod.tfvars            ← production config
 ```
 
 ## Build & Development Commands
@@ -106,10 +130,14 @@ npm run inspect            # MCP Inspector
 npm run setup              # Terraform init + apply + GCP APIs
 npm run build              # tsc
 npm run dev                # tsx watch mode
+npm run dev:local          # docker compose up --build (Firestore + GCS emulators)
 npm run start:gcp          # HTTP transport (Cloud Run)
-npm test                   # vitest run  (6 tests, all passing)
+npm test                   # vitest run  (20 tests, all passing)
+npm run test:integration   # tests against local emulators
 npm run lint               # eslint src/
 npm run seed               # Seed Firestore catalog
+npm run docker:build       # Build Docker image locally
+npm run clean              # rm -rf dist node_modules
 ```
 
 ## Architecture
@@ -157,17 +185,17 @@ npm run seed               # Seed Firestore catalog
 Three interfaces in `src/services/` enable deployment-path independence:
 
 - **`IDatabase`** (`database.ts`) — Generic CRUD + full-text search + pagination. Implemented by `SQLiteAdapter` (on-premise) and `FirestoreAdapter` (nube).
-- **`IStorage`** (`storage.ts`) — Read/write/list/delete/exists assets. Implemented by `FilesystemAdapter` (on-premise) and `GCSAdapter` (nube).
+- **`IStorage`** (`storage.ts`) — Read/write/list/delete/exists assets. `write()` accepts optional `contentType` param (nube). Implemented by `FilesystemAdapter` (on-premise) and `GCSAdapter` (nube).
 - **`ISecrets`** (`secrets.ts`) — Key/value secret access. Implemented by `DotenvAdapter` (on-premise) and `SecretManagerAdapter` (nube).
 
 ```
-IDatabase                          IStorage                    ISecrets
-├── get<T>(col, id)                ├── read(path)              ├── get(key)
-├── list<T>(col, opts?)            ├── write(path, content)    └── (single method)
+IDatabase                          IStorage                        ISecrets
+├── get<T>(col, id)                ├── read(path)                  ├── get(key)
+├── list<T>(col, opts?)            ├── write(path, content, type?) └── has(key)
 ├── create<T>(col, id, data)       ├── delete(path)
 ├── update<T>(col, id, data)       ├── list(prefix)
-├── delete(col, id)                └── exists(path)
-├── search<T>(col, query, opts?)
+├── delete(col, id)                ├── exists(path)
+├── search<T>(col, query, opts?)   └── getUrl(path)
 └── ping()
 ```
 
@@ -178,14 +206,15 @@ main()
   │
   ├── Create adapters
   │   ├── on-premise: SQLiteAdapter + FilesystemAdapter + DotenvAdapter
-  │   └── nube:       FirestoreAdapter + GCSAdapter + SecretManagerAdapter
+  │   └── nube:       FirestoreAdapter(project, dbId) + GCSAdapter + SecretManagerAdapter
   │
   ├── db.ping() → verify connectivity
   │
   └── TRANSPORT env var?
       │
-      ├── "http" → startHttpTransport(createServer, options)
+      ├── "http" → startHttpTransport(createServer, options) → TransportHandle
       │             Factory pattern: each session → new McpServer instance
+      │             nube: registers SIGTERM/SIGINT → handle.close() (30s timeout)
       │
       └── "stdio" (default on-premise)
                     Single McpServer + registerAllTools() + StdioServerTransport
@@ -193,32 +222,36 @@ main()
 
 ### HTTP Transport — Session Management
 
-The HTTP transport (`src/transport/http.ts`) implements MCP spec-compliant session management:
+The HTTP transport (`src/transport/http.ts`) implements MCP spec-compliant session management with production hardening (nube/):
 
 ```
-Client                              Server (Express)
+Client                              Server (Express + helmet + CORS)
   │                                     │
-  ├─ POST /mcp (no session-id) ────────►│ isInitializeRequest(body)?
-  │  { method: "initialize" }           │   ├── YES: Create StreamableHTTPServerTransport
-  │                                     │   │        sessionIdGenerator: randomUUID()
-  │                                     │   │        Create fresh McpServer via factory
-  │                                     │   │        registerAllTools(server, services)
-  │                                     │   │        server.connect(transport)
-  │  ◄── 200 + mcp-session-id ─────────│   │        Store in Map<sid, transport>
-  │                                     │   └── NO:  400 "Bad Request"
+  ├─ POST /mcp (no session-id) ────────►│ authMiddleware (timing-safe, rate-limited)
+  │  { method: "initialize" }           │   ├── sessions.size >= MAX_SESSIONS? → 503
+  │                                     │   ├── isInitializeRequest(body)?
+  │                                     │   │   ├── YES: Create StreamableHTTPServerTransport
+  │                                     │   │   │        sessionIdGenerator: randomUUID()
+  │                                     │   │   │        Store in Map<sid, SessionEntry>
+  │  ◄── 200 + mcp-session-id ─────────│   │   │        SessionEntry = { transport, lastActivity }
+  │                                     │   │   └── NO:  400 "Bad Request"
   │                                     │
-  ├─ POST /mcp + mcp-session-id ───────►│ transports.has(sessionId)?
-  │  { method: "tools/call", ... }      │   ├── YES: transport.handleRequest(req, res, body)
-  │  ◄── 200 { result } ───────────────│   └── NO:  400 "Invalid session"
+  ├─ POST /mcp + mcp-session-id ───────►│ UUID format validation
+  │  { method: "tools/call", ... }      │   ├── sessions.has(sid)? → update lastActivity
+  │  ◄── 200 { result } ───────────────│   └── NO: 400 "Invalid session"
   │                                     │
   ├─ GET /mcp + mcp-session-id ────────►│ SSE stream for active session
   │  ◄── text/event-stream ────────────│
   │                                     │
-  ├─ DELETE /mcp + mcp-session-id ─────►│ transport.close() + transports.delete(sid)
+  ├─ DELETE /mcp + mcp-session-id ─────►│ transport.close() + sessions.delete(sid)
   │  ◄── 204 ──────────────────────────│
   │                                     │
   └─ GET /health ──────────────────────►│ { status, timestamp, activeSessions }
      ◄── 200 ──────────────────────────│   (no auth required)
+
+  Background: cleanup interval every 60s removes sessions idle > SESSION_TIMEOUT_MS
+  Shutdown:   SIGTERM → closeAllSessions() → close HTTP server (30s force timeout)
+  Returns:    TransportHandle { closeAllSessions(), close() }
 ```
 
 ### Tool Call Flow Example
@@ -354,6 +387,10 @@ Same collections, but:
 - `search_tokens` array field auto-generated from name/description/tags
 - Search uses `array-contains-any` queries (no FTS5 equivalent)
 - Native array/object storage (no serialization needed)
+- Database ID configurable via `FIRESTORE_DATABASE_ID` env (default: `mal-catalog`)
+- 7 composite indexes defined in `terraform/firestore.tf` (category + updated_at, search_tokens + updated_at per collection)
+- Daily backup with 7-day retention
+- `deletion_protection_enabled = true` on database resource
 
 ## Tool Registration Pattern
 
@@ -380,47 +417,88 @@ server.registerTool("mal_tool_name", {
 
 ## GCP Infrastructure (nube/)
 
-### Terraform Resources (`terraform/main.tf`)
+### Terraform Resources
+
+Spread across 4 Terraform files with 10 variables and 7 outputs:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    GCP Project                          │
-│                                                         │
-│  ┌──────────────┐  ┌───────────┐  ┌─────────────────┐  │
-│  │ Cloud Run    │  │ Firestore │  │ Secret Manager  │  │
-│  │ mal-mcp-hub  │  │ (native)  │  │ MCP_API_KEY     │  │
-│  │ 0→10 inst.   │  │           │  │ GCP_SA_KEY      │  │
-│  │ 512Mi/1CPU   │  │           │  │ ...             │  │
-│  └──────┬───────┘  └───────────┘  └─────────────────┘  │
-│         │                                               │
-│  ┌──────▼───────┐  ┌───────────────────────────────┐    │
-│  │ Artifact     │  │ Cloud Build                   │    │
-│  │ Registry     │  │ npm ci → build → test →       │    │
-│  │ docker repo  │  │ docker build → push → deploy  │    │
-│  └──────────────┘  └───────────────────────────────┘    │
-│                                                         │
-│  ┌──────────────┐  ┌───────────────────────────────┐    │
-│  │ GCS Bucket   │  │ IAM Service Account           │    │
-│  │ mal-assets   │  │ mal-mcp-hub-sa               │    │
-│  │ (SKILL.md)   │  │ roles: run.invoker,           │    │
-│  └──────────────┘  │ datastore.user, storage.admin │    │
-│                    └───────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       GCP Project                            │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Cloud Run    │  │ Firestore    │  │ Secret Manager    │  │
+│  │ mal-mcp-hub  │  │ (native)     │  │ mal-mcp-api-keys  │  │
+│  │ 0→10 inst.   │  │ DB: mal-     │  │                   │  │
+│  │ 512Mi/1CPU   │  │  catalog     │  │                   │  │
+│  │ VPC egress   │  │ 7 indexes    │  │                   │  │
+│  └──────────────┘  │ daily backup │  └───────────────────┘  │
+│                    │ delete prot. │                          │
+│  ┌──────────────┐  └──────────────┘  ┌───────────────────┐  │
+│  │ VPC Access   │                    │ Cloud Build       │  │
+│  │ Connector    │  ┌──────────────┐  │ + vuln scan       │  │
+│  │ 10.8.0.0/28  │  │ Artifact    │  │ + smoke test      │  │
+│  └──────────────┘  │ Registry    │  │ + auto rollback   │  │
+│                    └──────────────┘  └───────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ GCS Bucket   │  │ Monitoring  │  │ Cloud Armor       │  │
+│  │ mal-assets   │  │ uptime chk  │  │ (optional WAF)    │  │
+│  │ (SKILL.md)   │  │ 3 alerts    │  │ 100 req/min/IP    │  │
+│  └──────────────┘  └──────────────┘  └───────────────────┘  │
+│                                                              │
+│  ┌───────────────────────────────────────────────────────┐   │
+│  │ IAM: mal-mcp-hub-sa                                   │   │
+│  │ roles: datastore.user, storage.objectAdmin,           │   │
+│  │ secretmanager.secretAccessor                          │   │
+│  └───────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+### Terraform Files
+
+| File | Resources |
+|------|-----------|
+| `main.tf` | Service account, Firestore DB (delete protection), GCS bucket, Secret Manager, Artifact Registry, VPC connector, Cloud Run (with new env vars) |
+| `firestore.tf` | 7 composite indexes (category + updated_at, search_tokens per collection) + daily backup (7-day retention) |
+| `monitoring.tf` | Email notification channel, /health uptime check (60s), error rate >5% alert, p95 latency >5s alert, max instances alert |
+| `cloud-armor.tf` | Conditional WAF (`var.enable_cloud_armor`): 100 req/min rate limit per IP, 5-min ban |
+| `variables.tf` | 10 variables: `project_id`, `region`, `min/max_instances`, `alert_email`, `enable_cloud_armor`, `session_timeout_ms`, `max_sessions`, `cors_origins`, `firestore_database_id` |
+| `outputs.tf` | 7 outputs: `cloud_run_url`, `cloud_run_service_name`, `service_account_email`, `gcs_bucket_name`, `firestore_database_name`, `vpc_connector_name`, `artifact_registry_url` |
+| `dev.tfvars` | Scale-to-zero, 3 max instances, no alerts, no Cloud Armor |
+| `prod.tfvars` | 1 min instance, 10 max, email alerts, Cloud Armor enabled |
 
 ### CI/CD Pipeline (`cloudbuild.yaml`)
 
 ```
-npm ci → npm run build → npm test → docker build → docker push → gcloud run deploy
-  1         2               3           4              5              6
+npm ci → build → test → docker build → vuln scan → push → deploy → smoke test
+  1       2       3        4              5          6       7          8
+                                                                   ↓ (fail)
+                                                              auto rollback
 ```
 
-### Dockerfile (Multi-stage)
+Steps 5 (vulnerability scan) uses `gcloud artifacts docker images scan`.
+Step 8 (smoke test) curls `/health` on the deployed Cloud Run URL; on failure, sets traffic to 0% for the latest revision.
+
+### Dockerfile (Multi-stage, Hardened)
 
 ```
-Stage 1 (builder):  node:20-slim → npm ci → npm run build
-Stage 2 (runtime):  node:20-slim → npm ci --omit=dev → COPY dist/ → node dist/index.js
+Stage 1 (builder):  node:20.11-slim → npm ci → npm run build
+Stage 2 (runtime):  node:20.11-slim → addgroup/adduser app → npm ci --omit=dev
+                    → COPY --chown=app:app dist/ → USER app
+                    → HEALTHCHECK (curl /health every 30s)
+                    → CMD ["node", "dist/index.js"]
 ```
+
+### Docker Compose (Local Development)
+
+```
+docker-compose.yml
+├── firestore-emulator (:8080)   ← google/cloud-sdk + gcloud beta emulators
+├── gcs-emulator (:4443)         ← fsouza/fake-gcs-server
+└── app (:3000)                  ← mal-mcp-hub (connects via FIRESTORE_EMULATOR_HOST,
+                                   STORAGE_EMULATOR_HOST env vars)
+```
+
+Run with `npm run dev:local`. Tests against emulators: `npm run test:integration`.
 
 ## Claude Code Connection Configuration
 
@@ -540,6 +618,31 @@ curl -X DELETE http://127.0.0.1:3000/mcp \
 
 Important: The `Accept: application/json, text/event-stream` header is **required** by the MCP Streamable HTTP spec. Without it, the server returns 406 Not Acceptable.
 
+## nube/ Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `FIRESTORE_PROJECT` | Yes | — | GCP project ID for Firestore |
+| `GCS_BUCKET` | Yes | — | Cloud Storage bucket name |
+| `GCP_PROJECT_ID` | Yes | — | GCP project ID for Secret Manager |
+| `TRANSPORT` | No | `http` | Transport mode: `http` or `stdio` |
+| `PORT` | No | `3000` | HTTP server port |
+| `HOST` | No | `0.0.0.0` | HTTP bind address |
+| `FIRESTORE_DATABASE_ID` | No | `mal-catalog` | Firestore database name |
+| `SESSION_TIMEOUT_MS` | No | `1800000` | Session idle timeout (30 min) |
+| `MAX_SESSIONS` | No | `100` | Max concurrent MCP sessions |
+| `CORS_ORIGINS` | No | `""` | Comma-separated allowed CORS origins |
+| `SECRET_CACHE_TTL_MS` | No | `300000` | Secret Manager cache TTL (5 min) |
+| `GCS_MAX_FILE_SIZE` | No | `10485760` | Max file read size (10MB) |
+| `LOG_LEVEL` | No | `info` | pino log level |
+| `NODE_ENV` | No | `production` | Node environment |
+
+## nube/ Dependencies
+
+Production: `@modelcontextprotocol/sdk`, `express`, `zod`, `pino`, `@google-cloud/firestore`, `@google-cloud/storage`, `@google-cloud/secret-manager`, `helmet`, `cors`
+
+Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vitest`, `eslint`, `@modelcontextprotocol/inspector`
+
 ## Known Fixes & Gotchas
 
 1. **SQLite boolean binding** — SQLite cannot bind JavaScript booleans. `SQLiteAdapter.serializeValue()` converts `true/false → 1/0`. Always use this method when inserting/updating.
@@ -558,6 +661,20 @@ Important: The `Accept: application/json, text/event-stream` header is **require
 
 8. **Auth header name** — The auth middleware checks `x-api-key` header (not `Authorization: Bearer`). Must match in Claude Code config and curl calls.
 
+9. **Firestore search total count** (fixed) — Previously `search()` returned `total: items.length` (page count, not real total). Now uses `searchQuery.count().get()` for accurate total. Same fix applied to `list()` which now counts on the filtered query.
+
+10. **Auth timing attacks** (fixed) — Auth comparison now uses `crypto.timingSafeEqual()` instead of `===`. Supports multiple API keys (comma-separated or JSON array in Secret Manager).
+
+11. **Session memory leaks** (fixed) — HTTP transport now tracks `lastActivity` per session, runs cleanup every 60s, enforces `MAX_SESSIONS` limit (503 on overflow), and provides `TransportHandle.closeAllSessions()` for graceful shutdown.
+
+12. **GCS retries** — `GCSAdapter` retries on 429/500/503 with exponential backoff (3 attempts). Also validates file size before download (`GCS_MAX_FILE_SIZE` env, default 10MB).
+
+13. **Secret Manager timeout** — `SecretManagerAdapter.get()` has 10s timeout via `Promise.race`. Cache TTL is configurable via `SECRET_CACHE_TTL_MS` env.
+
+14. **Firestore mock chain in tests** — Mock must provide `count()` at every level of the query chain (after `where()`, after `orderBy()`), not just on the collection root. See `buildQuery()` pattern in test files.
+
+15. **Dockerfile non-root** — nube/ Dockerfile runs as `app` user. All files must be `chown`ed to `app:app` before `USER app` directive.
+
 ## Conventions
 
 - Strict TypeScript, no `any`
@@ -571,12 +688,26 @@ Important: The `Accept: application/json, text/event-stream` header is **require
 - Git branches: `feature/mal-xxx-description`
 - Conventional commits: `feat:`, `fix:`, `docs:`, `infra:`
 
+### nube/ specific conventions
+
+- All configurable values via env vars with sensible defaults (never hardcoded)
+- Auth: timing-safe comparison, support multi-key, rate limit on failures
+- GCS: retry with backoff on transient errors, validate file sizes
+- Secrets: always add timeout, cache with configurable TTL
+- HTTP transport: track session activity, enforce limits, return `TransportHandle`
+- Dockerfile: non-root user, healthcheck, pinned base image
+- Terraform: use tfvars for env-specific config, conditional resources via variables
+- Dependencies: `helmet` for security headers, `cors` for CORS, `@types/cors` for types
+
 ## Test Status
 
 - **on-premise**: 10/10 tests passing (vitest)
   - `sqlite.adapter.test.ts` — 6 tests (ping, CRUD, pagination, delete, null handling)
   - `registry.test.ts` — 2 tests (tool registration, full CRUD flow)
   - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
-- **nube**: 6/6 tests passing (vitest)
-  - `firestore.adapter.test.ts` — 5 tests (full Firestore mock)
-  - `registry.test.ts` — 1 test (GCP service mocks)
+- **nube**: 20/20 tests passing (vitest)
+  - `firestore.adapter.test.ts` — 9 tests (CRUD, pagination, update, delete, custom DB ID)
+  - `auth.test.ts` — 6 tests (valid/invalid key, missing header, multi-key, rate limit)
+  - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
+  - `http.test.ts` — 2 tests (server startup, graceful shutdown)
+  - `registry.test.ts` — 1 test (tool registration)
