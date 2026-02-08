@@ -3,6 +3,7 @@ import { ListTodo, Filter, RefreshCw, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataCard } from "@/components/ui/data-card";
 import { useWorkItems, useCreateWorkItem } from "@/hooks/useData";
+import { useProjectContext } from "@/hooks/useProjectContext";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = ["", "todo", "in_progress", "done", "blocked"];
@@ -13,9 +14,12 @@ export function BacklogPage() {
   const [priorityFilter, setPriorityFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
+  const { activeProjectId, activeProject } = useProjectContext();
+
   const filters: Record<string, string> = {};
   if (statusFilter) filters.status = statusFilter;
   if (priorityFilter) filters.priority = priorityFilter;
+  if (activeProjectId) filters.project_id = activeProjectId;
 
   const { data, isLoading, error, refetch, isFetching } = useWorkItems(
     Object.keys(filters).length > 0 ? filters : undefined
@@ -28,7 +32,14 @@ export function BacklogPage() {
       <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <ListTodo className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">Backlog</h2>
+          <h2 className="text-lg font-semibold">
+            Backlog
+            {activeProject && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                — {activeProject.name}
+              </span>
+            )}
+          </h2>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setShowCreate(!showCreate)}>
@@ -113,6 +124,7 @@ function CreateWorkItemForm({
   onCreated: () => void;
   onCancel: () => void;
 }) {
+  const { activeProjectId } = useProjectContext();
   const createMutation = useCreateWorkItem();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -122,14 +134,16 @@ function CreateWorkItemForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    await createMutation.mutateAsync({
+    const data: Record<string, unknown> = {
       title: title.trim(),
       description: description.trim(),
       priority,
       status: "todo",
       story_points: parseInt(storyPoints, 10) || 1,
       tags: [],
-    });
+    };
+    if (activeProjectId) data.project_id = activeProjectId;
+    await createMutation.mutateAsync(data);
     onCreated();
   };
 

@@ -20,6 +20,7 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
         repo_path: z.string().optional().describe("Path to git repository (default: current working directory)"),
         days: z.number().optional().describe("Number of days to look back (default: 30)"),
         author: z.string().optional().describe("Filter by author name or email"),
+        project_id: z.string().optional().describe("Project ID to associate contributions with (for per-project leaderboards)"),
       },
     },
     async (args) => {

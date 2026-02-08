@@ -13,14 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DataCard } from "@/components/ui/data-card";
 import { useCommitActivity, useLeaderboard, useSprints } from "@/hooks/useData";
+import { useProjectContext } from "@/hooks/useProjectContext";
 import { TeamPulse } from "@/components/intelligence/TeamPulse";
 import { cn } from "@/lib/utils";
 
 export function AnalyticsPage() {
   const [commitDays, setCommitDays] = useState(30);
+  const { activeProject } = useProjectContext();
   const commits = useCommitActivity(commitDays);
   const leaderboard = useLeaderboard();
-  const sprints = useSprints();
+  const sprints = useSprints(undefined, activeProject?.id);
 
   const commitData = typeof commits.data?.data === "string" ? commits.data.data : undefined;
   const leaderboardData =
@@ -36,7 +38,14 @@ export function AnalyticsPage() {
       <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <BarChart3 className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">Analytics</h2>
+          <h2 className="text-lg font-semibold">
+            Analytics
+            {activeProject && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                — {activeProject.name}
+              </span>
+            )}
+          </h2>
         </div>
         <Button
           variant="ghost"

@@ -10,16 +10,19 @@ import {
   Trophy,
   Lightbulb,
   BookOpen,
+  FolderKanban,
   Menu,
   X,
 } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { useHealth } from "@/hooks/useCatalog";
+import { useProjectContext } from "@/hooks/useProjectContext";
 import { cn } from "@/lib/utils";
 
 const MOBILE_NAV = [
   { to: "/", icon: MessageSquare, label: "Chat" },
+  { to: "/projects", icon: FolderKanban, label: "Projects" },
   { to: "/sprints", icon: LayoutGrid, label: "Sprints" },
   { to: "/backlog", icon: ListTodo, label: "Backlog" },
   { to: "/next-steps", icon: Lightbulb, label: "Next Steps" },
@@ -34,6 +37,7 @@ export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: health } = useHealth();
+  const { activeProject } = useProjectContext();
 
   const statusColor =
     health?.mcp_status === "online"
@@ -56,7 +60,14 @@ export function Layout() {
           </button>
           <img src="/mal-logo.svg" alt="MAL" className="h-8 w-8" />
           <div>
-            <h1 className="text-lg font-bold text-gray-900">MAL MCP Hub</h1>
+            <h1 className="text-lg font-bold text-gray-900">
+              MAL MCP Hub
+              {activeProject && (
+                <span className="ml-2 text-sm font-medium text-mal-600">
+                  / {activeProject.name}
+                </span>
+              )}
+            </h1>
             <p className="hidden text-xs text-gray-500 sm:block">Monterrey Agentic Labs</p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import type { ChatMessage, StreamChunk, ToolCallInfo } from "../lib/types";
+import type { ChatMessage, ConfirmationPayload, StreamChunk, ToolCallInfo } from "../lib/types";
 import { generateId } from "../lib/utils";
 import { useWebSocket } from "./useWebSocket";
 import { fetchProjectContext } from "../lib/api";
@@ -9,6 +9,7 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [contextEnabled, setContextEnabled] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationPayload | null>(null);
   const currentAssistantRef = useRef<string | null>(null);
   const toolCallsRef = useRef<ToolCallInfo[]>([]);
 
@@ -116,6 +117,33 @@ export function useChat() {
         break;
       }
 
+      case "confirm": {
+        // Destructive tool confirmation request from the backend
+        if (chunk.confirm) {
+          const confirmPayload = chunk.confirm;
+          setPendingConfirmation(confirmPayload);
+
+          // Add a confirmation message to the chat
+          const confirmMsgId = generateId();
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: confirmMsgId,
+              role: "assistant",
+              content: "",
+              confirmation: confirmPayload,
+              confirmationResponded: false,
+              timestamp: new Date(),
+            },
+          ]);
+          // Don't reset streaming — we're waiting for user response
+          setIsStreaming(false);
+          currentAssistantRef.current = null;
+          toolCallsRef.current = [];
+        }
+        break;
+      }
+
       case "error": {
         const id = currentAssistantRef.current || generateId();
         if (!currentAssistantRef.current) {
@@ -161,7 +189,7 @@ export function useChat() {
 
   const sendMessage = useCallback(
     async (content: string) => {
-      if (!content.trim() || isStreaming) return;
+      if (!content.trim() || isStreaming || pendingConfirmation) return;
 
       const userMsg: ChatMessage = {
         id: generateId(),
@@ -190,11 +218,34 @@ export function useChat() {
 
       send(JSON.stringify({ message: content, history, context }));
     },
-    [send, messages, isStreaming, contextEnabled]
+    [send, messages, isStreaming, contextEnabled, pendingConfirmation]
+  );
+
+  const respondToConfirmation = useCallback(
+    (approved: boolean) => {
+      if (!pendingConfirmation) return;
+
+      // Mark the confirmation message as responded
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.confirmation && !m.confirmationResponded
+            ? { ...m, confirmationResponded: true }
+            : m
+        )
+      );
+
+      setPendingConfirmation(null);
+      setIsStreaming(true);
+
+      // Send the confirmation response to the backend
+      send(JSON.stringify({ type: "confirm_response", approved }));
+    },
+    [pendingConfirmation, send]
   );
 
   const clearMessages = useCallback(() => {
     setMessages([]);
+    setPendingConfirmation(null);
   }, []);
 
   const toggleContext = useCallback(() => {
@@ -210,5 +261,7 @@ export function useChat() {
     wsStatus,
     contextEnabled,
     toggleContext,
+    pendingConfirmation,
+    respondToConfirmation,
   };
 }

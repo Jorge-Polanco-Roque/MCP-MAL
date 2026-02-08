@@ -2611,10 +2611,38 @@ function seed() {
     }
   }
 
+  // --- Seed Project: Bella Italia ---
+  let projectCount = 0;
+  const insertProject = db.prepare(`
+    INSERT OR IGNORE INTO projects (id, name, description, status, owner_id, color, metadata)
+    VALUES (@id, @name, @description, @status, @owner_id, @color, @metadata)
+  `);
+
+  const projectResult = insertProject.run({
+    id: "bella-italia",
+    name: "Bella Italia",
+    description: "Restaurant website MVP — menu, reservations, online ordering",
+    status: "active",
+    owner_id: "jorge",
+    color: "green",
+    metadata: JSON.stringify({}),
+  });
+  if (projectResult.changes > 0) projectCount++;
+
+  // Migrate existing sprints and work items to the Bella Italia project
+  const updateSprintsProject = db.prepare(
+    `UPDATE sprints SET project_id = 'bella-italia' WHERE id LIKE 'bella-%' AND project_id IS NULL`
+  );
+  const updateWorkItemsProject = db.prepare(
+    `UPDATE work_items SET project_id = 'bella-italia' WHERE id LIKE 'BI-%' AND project_id IS NULL`
+  );
+  const sprintsUpdated = updateSprintsProject.run();
+  const workItemsUpdated = updateWorkItemsProject.run();
+
   db.close();
 
   const total =
-    mcpCount + skillCount + commandCount + subagentCount + achievementCount;
+    mcpCount + skillCount + commandCount + subagentCount + achievementCount + projectCount;
   console.log(
     `\nSeed complete! ${total} new entries added:`
   );
@@ -2623,6 +2651,10 @@ function seed() {
   console.log(`  ${commandCount} commands`);
   console.log(`  ${subagentCount} subagents`);
   console.log(`  ${achievementCount} achievements`);
+  console.log(`  ${projectCount} projects`);
+  if (sprintsUpdated.changes > 0 || workItemsUpdated.changes > 0) {
+    console.log(`  Migrated ${sprintsUpdated.changes} sprint(s) + ${workItemsUpdated.changes} work item(s) to project 'bella-italia'`);
+  }
 
   if (total === 0) {
     console.log("\n(All entries already existed — no duplicates added)");

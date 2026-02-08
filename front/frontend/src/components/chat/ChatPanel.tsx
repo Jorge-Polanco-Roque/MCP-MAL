@@ -17,6 +17,8 @@ export function ChatPanel() {
     wsStatus,
     contextEnabled,
     toggleContext,
+    pendingConfirmation,
+    respondToConfirmation,
   } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -85,12 +87,14 @@ export function ChatPanel() {
             <MessageSquare className="mb-4 h-12 w-12" />
             <p className="text-lg font-medium">Welcome to MAL MCP Hub</p>
             <p className="mt-1 text-sm">
-              Ask me about skills, commands, subagents, or anything in the catalog.
+              Ask me to create projects, manage sprints, track work items, or anything in the catalog.
             </p>
             <div className="mt-6 space-y-2 text-xs text-gray-400">
-              <p>"List all DevOps skills"</p>
-              <p>"What are the open work items?"</p>
-              <p>"Generate a sprint report"</p>
+              <p>"Crea un proyecto llamado Mi App con repo https://github.com/org/repo"</p>
+              <p>"Crea el sprint sprint-2026-w09 del 17 al 28 de febrero"</p>
+              <p>"Mueve MAL-042 a review"</p>
+              <p>"Muestra el leaderboard de bella-italia"</p>
+              <p>"Borra el skill docker-compose-patterns"</p>
             </div>
             {contextEnabled && (
               <p className="mt-4 rounded-md bg-yellow-50 px-3 py-1.5 text-xs text-yellow-700">
@@ -105,6 +109,11 @@ export function ChatPanel() {
                 key={msg.id}
                 message={msg}
                 isStreaming={isStreaming && i === messages.length - 1 && msg.role === "assistant"}
+                onConfirmResponse={
+                  msg.confirmation && !msg.confirmationResponded
+                    ? respondToConfirmation
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -112,7 +121,10 @@ export function ChatPanel() {
       </ScrollArea>
 
       {/* Input */}
-      <MessageInput onSend={sendMessage} disabled={isStreaming || !connected} />
+      <MessageInput
+        onSend={sendMessage}
+        disabled={isStreaming || !connected || !!pendingConfirmation}
+      />
     </div>
   );
 }

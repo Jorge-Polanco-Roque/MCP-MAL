@@ -13,6 +13,7 @@ import { registerWorkItemTools } from "./tools/work-items.js";
 import { registerTeamTools } from "./tools/team.js";
 import { registerGamificationTools } from "./tools/gamification.js";
 import { registerAnalyticsTools } from "./tools/analytics.js";
+import { registerProjectTools } from "./tools/projects.js";
 
 export interface Services {
   db: IDatabase;
@@ -37,4 +38,7 @@ export function registerAllTools(server: McpServer, services: Services): void {
   registerTeamTools(server, db);
   registerGamificationTools(server, db);
   registerAnalyticsTools(server, db);
+
+  // Project tools (4)
+  registerProjectTools(server, db);
 }

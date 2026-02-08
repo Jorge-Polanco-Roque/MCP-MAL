@@ -1,22 +1,54 @@
-import { Trophy, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { Trophy, RefreshCw, GitBranch, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { DataCard } from "@/components/ui/data-card";
 import { LevelBadge } from "@/components/gamification/LevelBadge";
 import { StreakIndicator } from "@/components/gamification/StreakIndicator";
 import { useLeaderboard } from "@/hooks/useData";
+import { useProjectContext } from "@/hooks/useProjectContext";
+import { fetchCommitActivity } from "@/lib/api";
 import { rankMedal, ROLE_COLORS } from "@/lib/gamification";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_REPO_URL = "https://github.com/Jorge-Polanco-Roque/MCP-MAL/tree/dev";
+
 export function LeaderboardPage() {
-  const { data, isLoading, error, refetch, isFetching } = useLeaderboard();
+  const { activeProjectId, activeProject } = useProjectContext();
+  const { data, isLoading, error, refetch, isFetching } = useLeaderboard(
+    20,
+    activeProjectId ?? undefined
+  );
   const navigate = useNavigate();
+  const [syncing, setSyncing] = useState(false);
 
   const content = typeof data?.data === "string" ? data.data : undefined;
 
   // Try to parse leaderboard entries from markdown table
   const entries = content ? parseLeaderboard(content) : [];
+
+  const title = activeProject
+    ? `Project Rankings — ${activeProject.name}`
+    : "Team Rankings";
+
+  // Determine repo URL from active project metadata or default
+  const repoUrl =
+    (activeProject?.metadata?.repo_url as string | undefined) ?? DEFAULT_REPO_URL;
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetchCommitActivity(90, repoUrl, activeProjectId ?? undefined);
+      toast.success("Commits synced — leaderboard updated");
+      refetch();
+    } catch (err) {
+      toast.error(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -25,18 +57,48 @@ export function LeaderboardPage() {
         <div className="flex items-center gap-3">
           <Trophy className="h-5 w-5 text-yellow-500" />
           <h2 className="text-lg font-semibold">Leaderboard</h2>
+          {activeProject && (
+            <span className="rounded-full bg-mal-100 px-2 py-0.5 text-xs font-medium text-mal-700">
+              {activeProject.name}
+            </span>
+          )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn("mr-1 h-4 w-4", isFetching && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={handleSync} disabled={syncing || isFetching}>
+            <GitBranch className={cn("mr-1 h-4 w-4", syncing && "animate-spin")} />
+            {syncing ? "Syncing..." : "Sync Commits"}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn("mr-1 h-4 w-4", isFetching && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
+        {/* Repo info bar */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          <GitBranch className="h-3.5 w-3.5 text-gray-400" />
+          <span className="font-medium">Source:</span>
+          <a
+            href={repoUrl.split("/tree/")[0]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="truncate font-mono text-mal-600 hover:underline"
+          >
+            {repoUrl.split("/tree/")[0].replace("https://github.com/", "")}
+            <ExternalLink className="ml-1 inline h-3 w-3" />
+          </a>
+          <span className="text-gray-400">|</span>
+          <span className="text-gray-500">
+            * Rankings are always based on the <strong>dev</strong> branch
+          </span>
+        </div>
+
         {entries.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Team Rankings</CardTitle>
+              <CardTitle className="text-base">{title}</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto p-0">
               <table className="w-full min-w-[500px]">
@@ -96,7 +158,7 @@ export function LeaderboardPage() {
           </Card>
         ) : (
           <DataCard
-            title="Leaderboard"
+            title={title}
             data={content}
             isLoading={isLoading}
             error={error}

@@ -26,6 +26,7 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
         priority: z.string().optional().describe("Priority: critical, high, medium (default), low"),
         story_points: z.number().optional().describe("Story point estimate (Fibonacci: 1, 2, 3, 5, 8, 13, 21)"),
         sprint_id: z.string().optional().describe("Sprint ID to assign this item to"),
+        project_id: z.string().optional().describe("Project ID to assign this item to"),
         assignee: z.string().optional().describe("Team member ID to assign this to"),
         reporter: z.string().optional().describe("Team member ID who reported this"),
         labels: z.array(z.string()).optional().describe("Labels for categorization"),
@@ -64,10 +65,12 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
       annotations: { readOnlyHint: true },
       inputSchema: {
         sprint_id: z.string().optional().describe("Filter by sprint ID"),
+        project_id: z.string().optional().describe("Filter by project ID"),
         assignee: z.string().optional().describe("Filter by assignee team member ID"),
         status: z.string().optional().describe("Filter by status: backlog, todo, in_progress, review, done, cancelled"),
         type: z.string().optional().describe("Filter by type: epic, story, task, bug, spike"),
         priority: z.string().optional().describe("Filter by priority: critical, high, medium, low"),
+        format: z.enum(["markdown", "json"]).optional().describe("Response format: markdown (default) or json for structured data"),
         limit: z.number().optional().describe("Max results (default 20, max 100)"),
         offset: z.number().optional().describe("Pagination offset"),
       },
@@ -76,10 +79,16 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
       try {
         const options = buildQueryOptions({ limit: args.limit, offset: args.offset, status: args.status });
         if (args.sprint_id) options.filters = { ...options.filters, sprint_id: args.sprint_id };
+        if (args.project_id) options.filters = { ...options.filters, project_id: args.project_id };
         if (args.assignee) options.filters = { ...options.filters, assignee: args.assignee };
         if (args.type) options.filters = { ...options.filters, type: args.type };
         if (args.priority) options.filters = { ...options.filters, priority: args.priority };
         const result = await db.list<WorkItem>(COLLECTIONS.WORK_ITEMS, options);
+        if (args.format === "json") {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ items: result.items, total: result.total, has_more: result.has_more }) }],
+          };
+        }
         return {
           content: [{ type: "text" as const, text: formatAsMarkdown(result as never, "Work Items") }],
         };

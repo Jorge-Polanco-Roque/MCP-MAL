@@ -1,12 +1,59 @@
 """REST API endpoints that proxy MCP tool calls for data access."""
 import json
 import logging
+import os
+import subprocess
+import uuid
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
+
+REPO_CACHE_DIR = Path(os.environ.get("REPO_CACHE_DIR", "/tmp/mal-repo-cache"))
+
+
+def _ensure_repo(repo_url: str, branch: str = "dev") -> str:
+    """Clone or pull a GitHub repo into a local cache directory. Returns local path."""
+    REPO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Derive a stable folder name from the repo URL
+    # e.g. https://github.com/Jorge-Polanco-Roque/MCP-MAL/tree/dev -> Jorge-Polanco-Roque-MCP-MAL
+    clean = repo_url.replace("https://github.com/", "").split("/tree/")[0]
+    folder_name = clean.replace("/", "-")
+    local_path = REPO_CACHE_DIR / folder_name
+
+    # Extract the clone URL (strip /tree/branch if present)
+    clone_url = repo_url.split("/tree/")[0]
+    if not clone_url.endswith(".git"):
+        clone_url = clone_url + ".git"
+
+    if (local_path / ".git").exists():
+        # Pull latest
+        logger.info(f"Pulling latest for {folder_name} (branch {branch})")
+        subprocess.run(
+            ["git", "-C", str(local_path), "fetch", "--all"],
+            capture_output=True, timeout=30,
+        )
+        subprocess.run(
+            ["git", "-C", str(local_path), "checkout", branch],
+            capture_output=True, timeout=10,
+        )
+        subprocess.run(
+            ["git", "-C", str(local_path), "pull", "origin", branch],
+            capture_output=True, timeout=30,
+        )
+    else:
+        # Clone
+        logger.info(f"Cloning {clone_url} (branch {branch}) into {local_path}")
+        subprocess.run(
+            ["git", "clone", "--branch", branch, clone_url, str(local_path)],
+            capture_output=True, timeout=60,
+        )
+
+    return str(local_path)
 
 
 async def _call_tool(tool_name: str, args: dict | None = None) -> Any:
@@ -16,7 +63,7 @@ async def _call_tool(tool_name: str, args: dict | None = None) -> Any:
     tools = await get_mcp_tools()
     tool = next((t for t in tools if t.name == tool_name), None)
     if not tool:
-        return {"error": f"Tool {tool_name} not found"}
+        raise HTTPException(status_code=502, detail=f"Tool {tool_name} not found on MCP server")
 
     result = await tool.ainvoke(args or {})
 
@@ -66,11 +113,13 @@ def _parse_md_table(text: str) -> list[dict]:
 
 
 @router.get("/sprints")
-async def list_sprints(status: str | None = None, limit: int = 20, offset: int = 0):
-    """List sprints with optional status filter."""
+async def list_sprints(status: str | None = None, project_id: str | None = None, limit: int = 20, offset: int = 0):
+    """List sprints with optional status and project filter."""
     args: dict = {"limit": limit, "offset": offset}
     if status:
         args["status"] = status
+    if project_id:
+        args["project_id"] = project_id
     return await _call_tool("mal_list_sprints", args)
 
 
@@ -89,8 +138,50 @@ async def create_sprint(body: dict):
 @router.put("/sprints/{sprint_id}")
 async def update_sprint(sprint_id: str, body: dict):
     """Update a sprint."""
-    body["sprint_id"] = sprint_id
+    body["id"] = sprint_id
     return await _call_tool("mal_update_sprint", body)
+
+
+# ────────────────────────── Sprints (structured JSON) ──────────────────────────
+
+
+@router.get("/sprints-list")
+async def list_sprints_json(status: str | None = None, project_id: str | None = None, limit: int = 50):
+    """Return sprints as structured JSON for the sprint selector."""
+    args: dict = {"format": "json", "limit": limit}
+    if status:
+        args["status"] = status
+    if project_id:
+        args["project_id"] = project_id
+    result = await _call_tool("mal_list_sprints", args)
+    items = result.get("items", []) if isinstance(result, dict) and "items" in result else []
+    return {"items": items, "total": len(items)}
+
+
+# ────────────────────────── Board (structured JSON for DnD) ──────────────────────────
+
+
+@router.get("/board")
+async def get_board(sprint_id: str | None = None, project_id: str | None = None):
+    """Return structured work items grouped by status for the Kanban board."""
+    args: dict = {"format": "json", "limit": 100}
+    if sprint_id:
+        args["sprint_id"] = sprint_id
+    if project_id:
+        args["project_id"] = project_id
+
+    result = await _call_tool("mal_list_work_items", args)
+
+    # With format=json, _call_tool's json.loads() will parse it into a dict
+    items = result.get("items", []) if isinstance(result, dict) and "items" in result else []
+
+    columns: dict[str, list] = {"todo": [], "in_progress": [], "review": [], "done": []}
+    for item in items:
+        status = item.get("status", "backlog") if isinstance(item, dict) else "backlog"
+        if status in columns:
+            columns[status].append(item)
+
+    return {"columns": columns, "total": len(items)}
 
 
 # ────────────────────────── Work Items ──────────────────────────
@@ -99,6 +190,7 @@ async def update_sprint(sprint_id: str, body: dict):
 @router.get("/work-items")
 async def list_work_items(
     sprint_id: str | None = None,
+    project_id: str | None = None,
     status: str | None = None,
     priority: str | None = None,
     assignee_id: str | None = None,
@@ -109,6 +201,8 @@ async def list_work_items(
     args: dict = {"limit": limit, "offset": offset}
     if sprint_id:
         args["sprint_id"] = sprint_id
+    if project_id:
+        args["project_id"] = project_id
     if status:
         args["status"] = status
     if priority:
@@ -121,7 +215,7 @@ async def list_work_items(
 @router.get("/work-items/{item_id}")
 async def get_work_item(item_id: str):
     """Get work item details."""
-    return await _call_tool("mal_get_work_item", {"item_id": item_id})
+    return await _call_tool("mal_get_work_item", {"id": item_id})
 
 
 @router.post("/work-items")
@@ -133,7 +227,7 @@ async def create_work_item(body: dict):
 @router.put("/work-items/{item_id}")
 async def update_work_item(item_id: str, body: dict):
     """Update a work item."""
-    body["item_id"] = item_id
+    body["id"] = item_id
     return await _call_tool("mal_update_work_item", body)
 
 
@@ -162,22 +256,72 @@ async def search_interactions(q: str, limit: int = 20):
     return await _call_tool("mal_search_interactions", {"query": q, "limit": limit})
 
 
+# ────────────────────────── Decisions ──────────────────────────
+
+
+@router.post("/decisions")
+async def create_decision(body: dict):
+    """Create a decision by logging it as an interaction with decision tags."""
+    title = body.get("title", "").strip()
+    description = body.get("description", "").strip()
+    user_id = body.get("user_id", "system")
+    tags = body.get("tags", [])
+
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+
+    decision_id = str(uuid.uuid4())
+    # Ensure "decision" tag is always present
+    if "decision" not in tags:
+        tags = ["decision"] + tags
+
+    return await _call_tool("mal_log_interaction", {
+        "id": decision_id,
+        "session_id": f"decision-{decision_id}",
+        "user_id": user_id,
+        "source": "web_chat",
+        "title": title,
+        "summary": description or title,
+        "decisions": [title],
+        "action_items": [],
+        "tools_used": [],
+        "tags": tags,
+        "messages": [],
+    })
+
+
 # ────────────────────────── Analytics ──────────────────────────
 
 
 @router.get("/analytics/commits")
-async def get_commit_activity(days: int = 30, repo_path: str | None = None):
-    """Get commit activity data."""
+async def get_commit_activity(
+    days: int = 30,
+    repo_path: str | None = None,
+    repo_url: str | None = None,
+    project_id: str | None = None,
+):
+    """Get commit activity data. If repo_url is provided, clone/pull the repo first."""
     args: dict = {"days": days}
-    if repo_path:
+
+    if repo_url:
+        local_path = _ensure_repo(repo_url, branch="dev")
+        args["repo_path"] = local_path
+    elif repo_path:
         args["repo_path"] = repo_path
+
+    if project_id:
+        args["project_id"] = project_id
+
     return await _call_tool("mal_get_commit_activity", args)
 
 
 @router.get("/analytics/leaderboard")
-async def get_leaderboard(limit: int = 20):
-    """Get team leaderboard."""
-    return await _call_tool("mal_get_leaderboard", {"limit": limit})
+async def get_leaderboard(limit: int = 20, project_id: str | None = None):
+    """Get team leaderboard. Optionally filter by project."""
+    args: dict = {"limit": limit}
+    if project_id:
+        args["project_id"] = project_id
+    return await _call_tool("mal_get_leaderboard", args)
 
 
 @router.get("/analytics/sprint-report/{sprint_id}")
@@ -281,6 +425,55 @@ async def get_activity_feed(limit: int = 20):
         pass
 
     return feed
+
+
+
+# ────────────────────────── Projects ──────────────────────────
+
+
+@router.get("/projects")
+async def list_projects(status: str | None = None, limit: int = 20, offset: int = 0):
+    """List projects with optional status filter."""
+    args: dict = {"limit": limit, "offset": offset}
+    if status:
+        args["status"] = status
+    return await _call_tool("mal_list_projects", args)
+
+
+@router.get("/projects-list")
+async def list_projects_json(status: str | None = None, limit: int = 50):
+    """Return projects as structured JSON for the project selector."""
+    args: dict = {"format": "json", "limit": limit}
+    if status:
+        args["status"] = status
+    result = await _call_tool("mal_list_projects", args)
+    items = result.get("items", []) if isinstance(result, dict) and "items" in result else []
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/projects/{project_id}")
+async def get_project(project_id: str):
+    """Get project details."""
+    return await _call_tool("mal_get_project", {"id": project_id})
+
+
+@router.post("/projects")
+async def create_project(body: dict):
+    """Create a new project."""
+    return await _call_tool("mal_create_project", body)
+
+
+@router.put("/projects/{project_id}")
+async def update_project(project_id: str, body: dict):
+    """Update a project."""
+    body["id"] = project_id
+    return await _call_tool("mal_update_project", body)
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, cascade: bool = False):
+    """Delete a project. Set cascade=true to also delete sprints and work items."""
+    return await _call_tool("mal_delete_project", {"id": project_id, "cascade": cascade})
 
 
 @router.get("/achievements")

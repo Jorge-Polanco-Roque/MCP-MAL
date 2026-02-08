@@ -2,12 +2,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   fetchSprints,
+  fetchSprintsList,
   fetchSprint,
   createSprint,
   fetchWorkItems,
   fetchWorkItem,
   createWorkItem,
   updateWorkItem,
+  fetchBoard,
   fetchInteractions,
   searchInteractions,
   fetchCommitActivity,
@@ -17,14 +19,85 @@ import {
   fetchTeamMember,
   fetchAchievements,
   fetchActivityFeed,
+  fetchProjectsList,
+  fetchProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  createDecision,
 } from "../lib/api";
+
+// ─── Projects ───
+
+export function useProjectsList(status?: string) {
+  return useQuery({
+    queryKey: ["projects-list", status],
+    queryFn: () => fetchProjectsList(status),
+    retry: 2,
+  });
+}
+
+export function useProject(projectId: string) {
+  return useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => fetchProject(projectId),
+    enabled: !!projectId,
+    retry: 2,
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => createProject(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects-list"] });
+      toast.success("Project created");
+    },
+    onError: (err: Error) => toast.error(`Failed to create project: ${err.message}`),
+  });
+}
+
+export function useUpdateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      updateProject(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects-list"] });
+      toast.success("Project updated");
+    },
+    onError: (err: Error) => toast.error(`Failed to update project: ${err.message}`),
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, cascade }: { id: string; cascade?: boolean }) =>
+      deleteProject(id, cascade),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects-list"] });
+      toast.success("Project deleted");
+    },
+    onError: (err: Error) => toast.error(`Failed to delete project: ${err.message}`),
+  });
+}
 
 // ─── Sprints ───
 
-export function useSprints(status?: string) {
+export function useSprints(status?: string, projectId?: string) {
   return useQuery({
-    queryKey: ["sprints", status],
-    queryFn: () => fetchSprints(status),
+    queryKey: ["sprints", status, projectId],
+    queryFn: () => fetchSprints(status, projectId),
+    retry: 2,
+  });
+}
+
+export function useSprintsList(status?: string, projectId?: string) {
+  return useQuery({
+    queryKey: ["sprints-list", status, projectId],
+    queryFn: () => fetchSprintsList(status, projectId),
     retry: 2,
   });
 }
@@ -44,9 +117,20 @@ export function useCreateSprint() {
     mutationFn: (data: Record<string, unknown>) => createSprint(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sprints"] });
+      qc.invalidateQueries({ queryKey: ["sprints-list"] });
       toast.success("Sprint created");
     },
     onError: (err: Error) => toast.error(`Failed to create sprint: ${err.message}`),
+  });
+}
+
+// ─── Board (structured JSON for DnD) ───
+
+export function useBoard(sprintId?: string, projectId?: string) {
+  return useQuery({
+    queryKey: ["board", sprintId, projectId],
+    queryFn: () => fetchBoard(sprintId, projectId),
+    retry: 2,
   });
 }
 
@@ -54,6 +138,7 @@ export function useCreateSprint() {
 
 export function useWorkItems(filters?: {
   sprint_id?: string;
+  project_id?: string;
   status?: string;
   priority?: string;
   assignee_id?: string;
@@ -80,6 +165,7 @@ export function useCreateWorkItem() {
     mutationFn: (data: Record<string, unknown>) => createWorkItem(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["work-items"] });
+      qc.invalidateQueries({ queryKey: ["board"] });
       toast.success("Work item created");
     },
     onError: (err: Error) => toast.error(`Failed to create work item: ${err.message}`),
@@ -118,21 +204,37 @@ export function useSearchInteractions(query: string) {
   });
 }
 
+// ─── Decisions ───
+
+export function useCreateDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { title: string; description?: string; user_id?: string; tags?: string[] }) =>
+      createDecision(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["interactions-search"] });
+      qc.invalidateQueries({ queryKey: ["interactions"] });
+      toast.success("Decision recorded");
+    },
+    onError: (err: Error) => toast.error(`Failed to create decision: ${err.message}`),
+  });
+}
+
 // ─── Analytics ───
 
-export function useCommitActivity(days: number = 30) {
+export function useCommitActivity(days: number = 30, repoUrl?: string, projectId?: string) {
   return useQuery({
-    queryKey: ["commit-activity", days],
-    queryFn: () => fetchCommitActivity(days),
+    queryKey: ["commit-activity", days, repoUrl, projectId],
+    queryFn: () => fetchCommitActivity(days, repoUrl, projectId),
     refetchInterval: 120_000,
     retry: 2,
   });
 }
 
-export function useLeaderboard(limit: number = 20) {
+export function useLeaderboard(limit: number = 20, projectId?: string) {
   return useQuery({
-    queryKey: ["leaderboard", limit],
-    queryFn: () => fetchLeaderboard(limit),
+    queryKey: ["leaderboard", limit, projectId],
+    queryFn: () => fetchLeaderboard(limit, projectId),
     refetchInterval: 60_000,
     retry: 2,
   });

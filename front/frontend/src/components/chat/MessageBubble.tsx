@@ -4,12 +4,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn, formatDate } from "@/lib/utils";
 import { ToolCallCard } from "./ToolCallCard";
+import { ConfirmationCard } from "./ConfirmationCard";
 import { findLinks } from "@/lib/autolink";
 import type { ChatMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  onConfirmResponse?: (approved: boolean) => void;
 }
 
 /** Pre-process text to convert @user, #sprint-id, WI-xxx → markdown links */
@@ -30,12 +32,15 @@ function applyAutolinks(text: string): string {
   return result;
 }
 
-export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
+export function MessageBubble({ message, isStreaming, onConfirmResponse }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const processedContent = useMemo(
     () => (isUser ? message.content : applyAutolinks(message.content)),
     [message.content, isUser]
   );
+
+  // Confirmation-only message (no text content)
+  const isConfirmationOnly = message.confirmation && !message.content;
 
   return (
     <div className={cn("flex gap-3 py-3", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -49,33 +54,45 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
       </div>
 
       <div className={cn("max-w-[90%] space-y-1 sm:max-w-[80%]", isUser ? "items-end" : "items-start")}>
-        <div
-          className={cn(
-            "rounded-xl px-4 py-2.5",
-            isUser
-              ? "bg-mal-600 text-white"
-              : "bg-white border border-gray-200 text-gray-800"
-          )}
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : (
-            <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {processedContent}
-              </ReactMarkdown>
-              {isStreaming && !message.content && (
-                <span className="inline-block h-4 w-1 animate-pulse bg-gray-400" />
-              )}
-            </div>
-          )}
-        </div>
+        {!isConfirmationOnly && (
+          <div
+            className={cn(
+              "rounded-xl px-4 py-2.5",
+              isUser
+                ? "bg-mal-600 text-white"
+                : "bg-white border border-gray-200 text-gray-800"
+            )}
+          >
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {processedContent}
+                </ReactMarkdown>
+                {isStreaming && !message.content && (
+                  <span className="inline-block h-4 w-1 animate-pulse bg-gray-400" />
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="w-full">
             {message.toolCalls.map((tc, i) => (
               <ToolCallCard key={`${tc.toolName}-${i}`} toolCall={tc} />
             ))}
+          </div>
+        )}
+
+        {message.confirmation && onConfirmResponse && (
+          <div className="w-full">
+            <ConfirmationCard
+              confirmation={message.confirmation}
+              onRespond={onConfirmResponse}
+              responded={message.confirmationResponded}
+            />
           </div>
         )}
 

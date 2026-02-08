@@ -23,18 +23,62 @@ export function registerGamificationTools(server: McpServer, db: IDatabase): voi
     "mal_get_leaderboard",
     {
       title: "Get Leaderboard",
-      description: "Get the team leaderboard ranked by XP. Shows each member's level, XP, streak, and role. Use for gamification rankings and team motivation.",
+      description: "Get the team leaderboard ranked by XP. When project_id is provided, ranks members by XP earned within that project only (from contributions). Otherwise shows global XP rankings.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         limit: z.number().optional().describe("Max results (default 20)"),
+        project_id: z.string().optional().describe("Filter leaderboard to a specific project (ranks by project-specific contribution XP)"),
       },
     },
     async (args) => {
       try {
+        const limit = args.limit ?? 20;
+
+        if (args.project_id) {
+          // Project-scoped leaderboard: aggregate contributions by user_id
+          const contributions = await db.list<Contribution>(COLLECTIONS.CONTRIBUTIONS, {
+            filters: { project_id: args.project_id },
+            limit: 1000,
+            order_by: "created_at",
+          });
+
+          if (contributions.items.length === 0) {
+            return {
+              content: [{ type: "text" as const, text: "## Leaderboard\n\nNo contributions found for this project yet." }],
+            };
+          }
+
+          // Aggregate points per user
+          const userPoints = new Map<string, number>();
+          for (const c of contributions.items) {
+            userPoints.set(c.user_id, (userPoints.get(c.user_id) ?? 0) + c.points);
+          }
+
+          // Sort by points descending
+          const sorted = [...userPoints.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+
+          // Fetch member details
+          const lines: string[] = ["## 🏆 Project Leaderboard", ""];
+          lines.push("| Rank | Member | Level | Project XP | Streak | Role |");
+          lines.push("|------|--------|-------|------------|--------|------|");
+
+          for (let i = 0; i < sorted.length; i++) {
+            const [userId, pts] = sorted[i];
+            const member = await db.get<TeamMember>(COLLECTIONS.TEAM_MEMBERS, userId);
+            if (!member) continue;
+            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`;
+            const streak = member.streak_days > 0 ? `🔥 ${member.streak_days}d` : "—";
+            lines.push(`| ${medal} | **${member.name}** | Lv.${member.level} | ${pts} | ${streak} | ${member.role} |`);
+          }
+
+          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        }
+
+        // Global leaderboard: rank by total XP on team_members
         const result = await db.list<TeamMember>(COLLECTIONS.TEAM_MEMBERS, {
           order_by: "xp",
           order_dir: "desc",
-          limit: args.limit ?? 20,
+          limit,
         });
 
         if (result.items.length === 0) {
@@ -134,6 +178,7 @@ export function registerGamificationTools(server: McpServer, db: IDatabase): voi
         points: z.number().describe("XP points to award"),
         description: z.string().optional().describe("Human-readable description of the contribution"),
         metadata: z.record(z.unknown()).optional().describe("Extra metadata (lines_changed, files_touched, etc.)"),
+        project_id: z.string().optional().describe("Project ID to associate this contribution with (for per-project leaderboards)"),
       },
     },
     async (args) => {

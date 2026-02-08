@@ -87,6 +87,25 @@ CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_usage_tool ON usage_log(tool_name);
 
 -- ============================================================
+-- Projects (group sprints and work items)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('planning','active','paused','completed','archived')),
+    owner_id TEXT,
+    color TEXT NOT NULL DEFAULT 'blue',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
+-- ============================================================
 -- Phase 5: Team Collaboration Platform tables
 -- ============================================================
 
@@ -151,6 +170,7 @@ CREATE TABLE IF NOT EXISTS sprints (
     summary TEXT,
     retrospective TEXT,
     created_by TEXT,
+    project_id TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -160,6 +180,7 @@ CREATE TABLE IF NOT EXISTS sprints (
 CREATE TABLE IF NOT EXISTS work_items (
     id TEXT PRIMARY KEY,
     sprint_id TEXT,
+    project_id TEXT,
     title TEXT NOT NULL,
     description TEXT,
     type TEXT NOT NULL DEFAULT 'task' CHECK(type IN ('epic','story','task','bug','spike')),
@@ -225,6 +246,8 @@ CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id);
 CREATE INDEX IF NOT EXISTS idx_contributions_type ON contributions(type);
 CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_sprints_status ON sprints(status);
+CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id);
+CREATE INDEX IF NOT EXISTS idx_work_items_project ON work_items(project_id);
 
 -- Full-text search for interactions
 CREATE VIRTUAL TABLE IF NOT EXISTS interactions_fts USING fts5(

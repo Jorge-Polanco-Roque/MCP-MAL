@@ -15,6 +15,7 @@ export const SprintSchema = z.object({
   summary: z.string().optional(),
   retrospective: z.string().optional(),
   created_by: z.string().optional(),
+  project_id: z.string().optional(),
   metadata: z.record(z.unknown()).default({}),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),

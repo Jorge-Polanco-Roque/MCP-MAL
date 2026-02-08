@@ -247,8 +247,8 @@ def test_prompts_exist_for_all_agents():
     assert len(CONTRIBUTION_SCORER_PROMPT) > 100
 
 
-def test_system_prompt_describes_42_tools():
-    """System prompt should describe all 42 MCP tools including Phase 5."""
+def test_system_prompt_describes_47_tools():
+    """System prompt should describe all 47 MCP tools including Projects."""
     from app.agent.prompts import SYSTEM_PROMPT
     # Original tools
     assert "mal_list_skills" in SYSTEM_PROMPT
@@ -260,4 +260,7 @@ def test_system_prompt_describes_42_tools():
     assert "mal_get_leaderboard" in SYSTEM_PROMPT
     assert "mal_get_commit_activity" in SYSTEM_PROMPT
     assert "mal_register_team_member" in SYSTEM_PROMPT
-    assert "42 MCP tools" in SYSTEM_PROMPT
+    # Phase 11 project tools
+    assert "mal_create_project" in SYSTEM_PROMPT
+    assert "mal_delete_project" in SYSTEM_PROMPT
+    assert "47 MCP tools" in SYSTEM_PROMPT

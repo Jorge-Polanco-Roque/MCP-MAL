@@ -26,6 +26,7 @@ export function registerSprintTools(server: McpServer, db: IDatabase): void {
         status: z.string().optional().describe("Status: planned (default), active, completed, cancelled"),
         team_capacity: z.number().optional().describe("Total story points the team can handle"),
         created_by: z.string().optional().describe("Team member ID who created this sprint"),
+        project_id: z.string().optional().describe("Project ID to assign this sprint to"),
         metadata: z.record(z.unknown()).optional().describe("Extra metadata"),
       },
     },
@@ -60,14 +61,22 @@ export function registerSprintTools(server: McpServer, db: IDatabase): void {
       annotations: { readOnlyHint: true },
       inputSchema: {
         status: z.string().optional().describe("Filter by status: planned, active, completed, cancelled"),
+        project_id: z.string().optional().describe("Filter by project ID"),
+        format: z.enum(["markdown", "json"]).optional().describe("Response format: markdown (default) or json for structured data"),
         limit: z.number().optional().describe("Max results (default 20, max 100)"),
         offset: z.number().optional().describe("Pagination offset"),
       },
     },
     async (args) => {
       try {
-        const options = buildQueryOptions(args);
+        const options = buildQueryOptions({ limit: args.limit, offset: args.offset, status: args.status });
+        if (args.project_id) options.filters = { ...options.filters, project_id: args.project_id };
         const result = await db.list<Sprint>(COLLECTIONS.SPRINTS, options);
+        if (args.format === "json") {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ items: result.items, total: result.total, has_more: result.has_more }) }],
+          };
+        }
         return {
           content: [{ type: "text" as const, text: formatAsMarkdown(result as never, "Sprints") }],
         };

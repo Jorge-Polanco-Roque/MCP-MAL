@@ -1,10 +1,19 @@
 // ─── Chat types (existing) ───
 
+export interface ConfirmationPayload {
+  type: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  message: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   toolCalls?: ToolCallInfo[];
+  confirmation?: ConfirmationPayload;
+  confirmationResponded?: boolean;
   timestamp: Date;
 }
 
@@ -16,7 +25,7 @@ export interface ToolCallInfo {
 }
 
 export interface StreamChunk {
-  type: "token" | "tool_call" | "tool_result" | "error" | "done";
+  type: "token" | "tool_call" | "tool_result" | "error" | "done" | "confirm";
   content: string;
   tool_call?: {
     tool_name: string;
@@ -24,6 +33,7 @@ export interface StreamChunk {
     result?: string;
     duration_ms?: number;
   };
+  confirm?: ConfirmationPayload;
 }
 
 // ─── Health / Catalog (existing) ───
@@ -49,18 +59,49 @@ export interface StatsResponse {
 
 export type Collection = "skills" | "commands" | "subagents" | "mcps";
 
+// ─── Project types ───
+
+export type ProjectStatus = "planning" | "active" | "paused" | "completed" | "archived";
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  status: ProjectStatus;
+  owner_id?: string;
+  color?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectListResponse {
+  items: Project[];
+  total: number;
+}
+
 // ─── Sprint types ───
+
+export type SprintStatus = "planned" | "active" | "completed" | "cancelled";
 
 export interface Sprint {
   id: string;
   name: string;
-  status: "planning" | "active" | "completed";
+  status: SprintStatus;
+  goal?: string;
   start_date: string;
   end_date: string;
-  goals: string[];
+  team_capacity?: number;
   velocity?: number;
+  created_by?: string;
+  project_id?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SprintListResponse {
+  items: Sprint[];
+  total: number;
 }
 
 // ─── Work Item types ───
@@ -75,6 +116,7 @@ export interface WorkItem {
   status: WorkItemStatus;
   priority: WorkItemPriority;
   sprint_id?: string;
+  project_id?: string;
   assignee_id?: string;
   story_points?: number;
   tags: string[];
@@ -149,6 +191,30 @@ export interface CommitActivity {
   additions: number;
   deletions: number;
   author?: string;
+}
+
+// ─── Board types (Kanban DnD) ───
+
+export type BoardStatus = "todo" | "in_progress" | "review" | "done";
+
+export interface BoardItem {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority: string;
+  story_points?: number;
+  assignee?: string;
+  sprint_id?: string;
+  labels?: string[];
+  type?: string;
+}
+
+export type BoardColumns = Record<BoardStatus, BoardItem[]>;
+
+export interface BoardResponse {
+  columns: BoardColumns;
+  total: number;
 }
 
 // ─── Generic MCP response wrapper ───

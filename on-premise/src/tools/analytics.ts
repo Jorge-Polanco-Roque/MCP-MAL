@@ -61,6 +61,7 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
         repo_path: z.string().optional().describe("Path to git repository (default: current working directory)"),
         days: z.number().optional().describe("Number of days to look back (default: 30)"),
         author: z.string().optional().describe("Filter by author name or email"),
+        project_id: z.string().optional().describe("Project ID to associate contributions with (for per-project leaderboards)"),
       },
     },
     async (args) => {
@@ -150,7 +151,7 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
           if (!member) continue; // no matching team member
 
           const pts = commitPoints(c.insertions, c.deletions);
-          await db.create(COLLECTIONS.CONTRIBUTIONS, "", {
+          const contribData: Record<string, unknown> = {
             user_id: member.id,
             type: "commit",
             reference_id: c.hash,
@@ -162,7 +163,9 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
               files: c.files,
               date: c.date,
             },
-          });
+          };
+          if (args.project_id) contribData.project_id = args.project_id;
+          await db.create(COLLECTIONS.CONTRIBUTIONS, "", contribData);
           xpAwarded[member.id] = (xpAwarded[member.id] ?? 0) + pts;
         }
 

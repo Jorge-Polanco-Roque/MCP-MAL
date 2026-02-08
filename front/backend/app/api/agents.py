@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
@@ -92,75 +92,6 @@ async def _run_agent(agent_name: str, prompt: str) -> AgentResponse:
         )
 
 
-async def _stream_agent(ws: WebSocket, agent_name: str, prompt: str) -> None:
-    """Stream a named agent's execution over WebSocket."""
-    from app.main import get_agent
-    from app.api.chat import _extract_content, _safe_args
-
-    agent = get_agent(agent_name)
-    if agent is None:
-        await ws.send_text(json.dumps({
-            "type": "error",
-            "content": f"{agent_name} agent is not available.",
-        }))
-        return
-
-    messages = [HumanMessage(content=prompt)]
-    try:
-        async for event in agent.astream_events(
-            {"messages": messages},
-            version="v2",
-        ):
-            kind = event["event"]
-
-            if kind == "on_chat_model_stream":
-                chunk = event["data"].get("chunk")
-                if chunk and hasattr(chunk, "content"):
-                    text = _extract_content(chunk.content)
-                    if text:
-                        await ws.send_text(json.dumps({
-                            "type": "token",
-                            "content": text,
-                        }))
-
-            elif kind == "on_tool_start":
-                tool_name = event.get("name", "unknown")
-                raw_input = event.get("data", {}).get("input", {})
-                await ws.send_text(json.dumps({
-                    "type": "tool_call",
-                    "content": "",
-                    "tool_call": {
-                        "tool_name": tool_name,
-                        "arguments": _safe_args(raw_input),
-                    },
-                }))
-
-            elif kind == "on_tool_end":
-                tool_name = event.get("name", "unknown")
-                output = event.get("data", {}).get("output", "")
-                if hasattr(output, "content"):
-                    result_text = _extract_content(output.content)
-                else:
-                    result_text = str(output)
-                await ws.send_text(json.dumps({
-                    "type": "tool_result",
-                    "content": "",
-                    "tool_call": {
-                        "tool_name": tool_name,
-                        "arguments": {},
-                        "result": result_text,
-                    },
-                }))
-
-        await ws.send_text(json.dumps({"type": "done", "content": ""}))
-    except Exception as e:
-        logger.exception("Agent %s streaming error", agent_name)
-        await ws.send_text(json.dumps({
-            "type": "error",
-            "content": f"Agent error: {str(e)}",
-        }))
-
-
 # --- REST Endpoints ---
 
 @router.post("/analyze-interaction", response_model=AgentResponse)
@@ -247,55 +178,3 @@ Instructions:
 4. Return: XP awarded, new total XP, level, streak, and any achievements unlocked"""
 
     return await _run_agent("contribution_scorer", prompt)
-
-
-# --- WebSocket Endpoints for streaming ---
-
-@router.websocket("/ws/sprint-report")
-async def ws_sprint_report(ws: WebSocket):
-    """Stream sprint report generation in real-time."""
-    await ws.accept()
-    try:
-        data = await ws.receive_text()
-        payload = json.loads(data)
-        sprint_id = payload.get("sprint_id", "")
-        repo_path = payload.get("repo_path")
-        days = payload.get("days", 14)
-
-        prompt = f"""Generate a comprehensive sprint report.
-
-Sprint ID: {sprint_id}
-Repository path: {repo_path or "(default)"}
-Commit activity lookback: {days} days
-
-Fetch all data, analyze, generate report, and store results."""
-
-        await _stream_agent(ws, "sprint_reporter", prompt)
-    except WebSocketDisconnect:
-        logger.info("Sprint report WS disconnected")
-    except Exception:
-        logger.exception("Sprint report WS error")
-
-
-@router.websocket("/ws/next-steps")
-async def ws_next_steps(ws: WebSocket):
-    """Stream next steps suggestions in real-time."""
-    await ws.accept()
-    try:
-        data = await ws.receive_text()
-        payload = json.loads(data)
-        user_id = payload.get("user_id")
-        sprint_id = payload.get("sprint_id")
-
-        prompt = f"""Generate next step suggestions.
-
-User ID: {user_id or "(all team)"}
-Sprint ID: {sprint_id or "(active sprint)"}
-
-Gather context, analyze priorities, and generate 5-10 actionable suggestions."""
-
-        await _stream_agent(ws, "next_steps", prompt)
-    except WebSocketDisconnect:
-        logger.info("Next steps WS disconnected")
-    except Exception:
-        logger.exception("Next steps WS error")

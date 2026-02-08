@@ -72,6 +72,22 @@ export interface MCPRegistryEntry {
   updated_at: string;
 }
 
+// --- Project types ---
+
+export type ProjectStatus = "planning" | "active" | "paused" | "completed" | "archived";
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  status: ProjectStatus;
+  owner_id?: string;
+  color: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Phase 5: Team Collaboration Platform types ---
 
 export type TeamRole = "developer" | "lead" | "scrum_master" | "product_owner";
@@ -138,6 +154,7 @@ export interface Sprint {
   summary?: string;
   retrospective?: string;
   created_by?: string;
+  project_id?: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -150,6 +167,7 @@ export type WorkItemPriority = "critical" | "high" | "medium" | "low";
 export interface WorkItem {
   id: string;
   sprint_id?: string;
+  project_id?: string;
   title: string;
   description?: string;
   type: WorkItemType;
@@ -176,6 +194,7 @@ export interface Contribution {
   points: number;
   description?: string;
   metadata: Record<string, unknown>;
+  project_id?: string;
   created_at: string;
 }
 

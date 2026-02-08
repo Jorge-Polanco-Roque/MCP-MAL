@@ -12,6 +12,7 @@ export const ContributionSchema = z.object({
   points: z.number().int().min(0).default(0),
   description: z.string().max(500).optional(),
   metadata: z.record(z.unknown()).default({}),
+  project_id: z.string().optional(),
 }).strict();
 
 export const AchievementSchema = z.object({

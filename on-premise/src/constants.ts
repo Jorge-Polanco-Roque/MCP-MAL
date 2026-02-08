@@ -18,6 +18,7 @@ export const COLLECTIONS = {
   CONTRIBUTIONS: "contributions",
   ACHIEVEMENTS: "achievements",
   USER_ACHIEVEMENTS: "user_achievements",
+  PROJECTS: "projects",
 } as const;
 
 export const SKILL_CATEGORIES = ["data", "document", "devops", "frontend", "design", "custom"] as const;
@@ -49,3 +50,5 @@ export const CONTRIBUTION_TYPES = ["commit", "interaction", "work_item", "review
 export const ACHIEVEMENT_CATEGORIES = ["code", "collaboration", "agile", "exploration", "mastery"] as const;
 
 export const ACHIEVEMENT_TIERS = ["bronze", "silver", "gold", "platinum"] as const;
+
+export const PROJECT_STATUSES = ["planning", "active", "paused", "completed", "archived"] as const;

@@ -8,6 +8,7 @@ export const WorkItemPrioritySchema = z.enum(WORK_ITEM_PRIORITIES);
 export const WorkItemSchema = z.object({
   id: z.string().min(1).regex(/^[A-Za-z0-9-]+$/, "ID must be alphanumeric with hyphens (e.g. MAL-001)"),
   sprint_id: z.string().optional(),
+  project_id: z.string().optional(),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
   type: WorkItemTypeSchema.default("task"),
