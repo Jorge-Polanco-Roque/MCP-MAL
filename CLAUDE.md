@@ -8,12 +8,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Structure
 
-The project is split into two independent, self-contained folders:
+The project is split into three independent, self-contained folders:
 
 - **`on-premise/`** — Local deployment path (SQLite + filesystem + .env)
 - **`nube/`** — GCP Cloud deployment path (Firestore + GCS + Secret Manager + Cloud Run)
+- **`front/`** — Web interface (Python FastAPI + LangGraph agent + React dashboard)
 
-Both share identical business logic code (`src/tools/`, `src/schemas/`, `src/utils/`, `src/types.ts`, `src/server.ts`, `src/transport/`). They differ only in service adapters (`src/services/local/` vs `src/services/gcp/`) and entry point wiring (`src/index.ts`).
+on-premise/ and nube/ share identical business logic code (`src/tools/`, `src/schemas/`, `src/utils/`, `src/types.ts`, `src/server.ts`, `src/transport/`). They differ only in service adapters (`src/services/local/` vs `src/services/gcp/`) and entry point wiring (`src/index.ts`).
+
+front/ contains a Python backend (FastAPI + LangGraph + langchain-mcp-adapters) that connects to the MCP server, and a React frontend (Vite + Tailwind CSS) with a chat interface and catalog dashboard.
 
 ```
 v001/
@@ -110,6 +113,29 @@ v001/
         ├── outputs.tf             ← 7 outputs (4 new)
         ├── dev.tfvars             ← development config
         └── prod.tfvars            ← production config
+└── front/                         ← web interface
+    ├── CLAUDE.md                  ← front/ docs
+    ├── docker-compose.yml         ← 3 services
+    ├── backend/
+    │   ├── pyproject.toml
+    │   ├── requirements.txt
+    │   ├── Dockerfile
+    │   └── app/
+    │       ├── main.py            ← FastAPI + lifespan
+    │       ├── config.py          ← pydantic-settings
+    │       ├── agent/             ← LangGraph graph + prompts
+    │       ├── mcp/               ← MultiServerMCPClient
+    │       ├── api/               ← WebSocket chat + REST dashboard
+    │       └── models/            ← Pydantic schemas
+    └── frontend/
+        ├── package.json
+        ├── vite.config.ts
+        ├── Dockerfile
+        └── src/
+            ├── App.tsx            ← 2-column layout
+            ├── components/        ← chat/ + dashboard/ + ui/
+            ├── hooks/             ← useChat, useWebSocket, useCatalog
+            └── lib/               ← types, api, utils
 ```
 
 ## Build & Development Commands
@@ -143,6 +169,26 @@ npm run seed               # Seed Firestore catalog
 npm run keys -- list       # API key management (list/add/show/remove)
 npm run docker:build       # Build Docker image locally
 npm run clean              # rm -rf dist node_modules
+```
+
+### front/ (Web Interface)
+
+```bash
+# Backend (Python)
+cd front/backend
+pip install -r requirements.txt    # Install deps
+uvicorn app.main:app --reload      # Dev server on :8000
+pytest                             # Run tests
+
+# Frontend (React)
+cd front/frontend
+npm install                        # Install deps
+npm run dev                        # Vite dev server on :5173
+npm run build                      # Production build
+
+# All services (Docker)
+cd front
+docker compose up --build          # MCP :3000 + Backend :8000 + Frontend :80
 ```
 
 ## Architecture
@@ -719,6 +765,12 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 15. **Dockerfile non-root** — nube/ Dockerfile runs as `app` user. All files must be `chown`ed to `app:app` before `USER app` directive.
 
+16. **`langchain-mcp-adapters` 0.1.0+ context manager removed** (fixed) — As of `langchain-mcp-adapters` 0.1.0, `MultiServerMCPClient` can no longer be used as an async context manager (`async with`). Calling `__aenter__()` or `__aexit__()` raises `NotImplementedError`. Instead, create the client directly and call `await client.get_tools()`. No explicit close is needed — each tool call opens its own session. See `front/backend/app/mcp/client.py`.
+
+17. **LangGraph `on_tool_start` event contains non-serializable `ToolRuntime`** (fixed) — When streaming via `agent.astream_events()`, the `on_tool_start` event's `data.input` dict includes a `runtime` key containing a `ToolRuntime` object with internal LangGraph state (messages, config, callbacks, etc.). This is not JSON-serializable. The WebSocket chat handler in `front/backend/app/api/chat.py` filters out internal keys (`runtime`, `config`, `callbacks`, `store`, `context`) before serializing tool arguments.
+
+18. **LangGraph `on_chat_model_stream` content types** (fixed) — The `chunk.content` in `on_chat_model_stream` events can be a `str`, a `list` of dicts (e.g. `[{"type": "text", "text": "..."}]`), or other types depending on the model provider. The `_extract_content()` helper in `chat.py` normalizes all content types to a plain string before sending to the WebSocket client.
+
 ## Conventions
 
 - Strict TypeScript, no `any`
@@ -755,3 +807,12 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
   - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
   - `http.test.ts` — 2 tests (server startup, graceful shutdown)
   - `registry.test.ts` — 1 test (tool registration)
+- **front/backend**: 3/3 tests passing (pytest)
+  - `test_agent.py` — 2 tests (graph compilation, system prompt content)
+  - `test_api.py` — 1 test (health endpoint with mocked MCP)
+- **front/frontend**: TypeScript strict + Vite build — 0 errors
+- **front/ E2E** (verified manually):
+  - MCP server (:3000) → 22 tools loaded
+  - Backend (:8000) → agent ready, all REST endpoints return correct data
+  - Frontend (:5173) → serves HTML, proxies /api and /ws to backend
+  - WebSocket chat with real GPT-4o → 3/3 tool-calling scenarios passed (mal_list_skills, mal_health_check, mal_search_catalog)
