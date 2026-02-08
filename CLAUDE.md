@@ -853,3 +853,581 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
     - "Search catalog for prueba" → `mal_search_catalog` → search results (2.4s)
     - "Dame las estadísticas" → `mal_get_usage_stats` → usage stats (1.8s)
   - Frontend (:5173) → serves HTML, Vite proxies /api and /ws to backend
+
+## Roadmap: Team Collaboration Platform
+
+### Vision
+
+MAL MCP Hub evolves from a tool catalog into a **team collaboration and work management platform**. Every interaction between team members and Claude Code is captured, analyzed, and made searchable. Sprints are managed within the MCP. Contributions are gamified. AI agents generate summaries, retrospectives, and intelligent next-step suggestions — all powered by real data, never hardcoded.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Browser (React Multi-Page App)                       │
+│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐ ┌────────────┐  │
+│  │  Chat   │ │ Sprints  │ │Analytics │ │Leaderboard │ │ Next Steps │  │
+│  │(existing│ │ (Kanban) │ │(Recharts)│ │  (Gamified)│ │ (AI Agent) │  │
+│  │enhanced)│ │          │ │          │ │            │ │            │  │
+│  └────┬────┘ └────┬─────┘ └────┬─────┘ └─────┬──────┘ └─────┬──────┘  │
+│       │ WS        │ REST       │ REST         │ REST         │ WS/REST │
+└───────┼───────────┼────────────┼──────────────┼──────────────┼─────────┘
+        │           │            │              │              │
+        ▼           ▼            ▼              ▼              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FastAPI Backend (:8000)                              │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │                  LangGraph Multi-Agent System                     │  │
+│  │                                                                   │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │  │
+│  │  │ Chat Agent   │  │ Interaction  │  │ Sprint       │           │  │
+│  │  │ (existing)   │  │ Analyzer     │  │ Reporter     │           │  │
+│  │  │ GPT-4o +     │  │ Agent        │  │ Agent        │           │  │
+│  │  │ 42 MCP tools │  │ GPT-4o       │  │ GPT-4o       │           │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘           │  │
+│  │  ┌──────────────┐  ┌──────────────┐                              │  │
+│  │  │ Next Steps   │  │ Contribution │                              │  │
+│  │  │ Suggester    │  │ Scorer       │                              │  │
+│  │  │ Agent        │  │ Agent        │                              │  │
+│  │  │ GPT-4o       │  │ GPT-4o       │                              │  │
+│  │  └──────────────┘  └──────────────┘                              │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                              │                                          │
+│  ┌───────────────────────────▼───────────────────────────────────────┐  │
+│  │           langchain-mcp-adapters (42 MCP tools)                   │  │
+│  └───────────────────────────┬───────────────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────────────┘
+                               │ Streamable HTTP
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    mal-mcp-hub (on-premise :3000)                       │
+│                                                                         │
+│  Existing (22 tools)              New (~20 tools)                       │
+│  ┌──────────────────┐             ┌──────────────────────────────────┐  │
+│  │ registry (7)     │             │ interactions (4)                 │  │
+│  │ skills (2)       │             │ sprints (4)                      │  │
+│  │ commands (4)     │             │ work_items (4)                   │  │
+│  │ subagents (3)    │             │ team (3)                         │  │
+│  │ mcp-proxy (2)    │             │ gamification (3)                 │  │
+│  │ meta (4)         │             │ analytics (2)                    │  │
+│  └──────────────────┘             └──────────────────────────────────┘  │
+│                                                                         │
+│  SQLite: 5 existing tables + 7 new tables + FTS5 updates               │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### User Identity Strategy
+
+Identity is extracted automatically — no auth system needed for MVP:
+
+| Source | User Extraction | When |
+|--------|----------------|------|
+| Claude Code sessions | `$USER` env var + `git config user.name` | Interaction logging |
+| Git commits | `git log --format='%an <%ae>'` | Commit analytics |
+| MCP API calls | Named API key (`apiKeyOwner`) | Server-side tracking |
+| Frontend chat | User selector (pick your name) → cookie | Chat sessions |
+
+Team members are registered once via `mal_register_team_member` and used throughout.
+
+### New Data Model
+
+#### 7 New SQLite Tables
+
+```sql
+-- Team member profiles
+CREATE TABLE team_members (
+    id TEXT PRIMARY KEY,              -- slug: 'jorge', 'carlos'
+    name TEXT NOT NULL,               -- "Jorge Polanco"
+    email TEXT,                       -- git email
+    avatar_url TEXT,                  -- optional
+    role TEXT DEFAULT 'developer',    -- developer | lead | scrum_master | product_owner
+    xp INTEGER DEFAULT 0,            -- total experience points
+    level INTEGER DEFAULT 1,         -- calculated from XP
+    streak_days INTEGER DEFAULT 0,   -- consecutive contribution days
+    streak_last_date TEXT,           -- last contribution date
+    metadata TEXT DEFAULT '{}',      -- JSON: custom fields
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Interaction sessions (conversation units)
+CREATE TABLE interactions (
+    id TEXT PRIMARY KEY,              -- UUID
+    session_id TEXT NOT NULL,         -- groups multi-turn conversation
+    user_id TEXT NOT NULL,            -- team_members.id
+    source TEXT DEFAULT 'claude_code', -- claude_code | web_chat | api
+    title TEXT,                       -- auto-generated or user-provided
+    summary TEXT,                     -- AI-generated summary (async)
+    decisions TEXT DEFAULT '[]',      -- JSON: extracted key decisions
+    action_items TEXT DEFAULT '[]',   -- JSON: extracted action items
+    tools_used TEXT DEFAULT '[]',     -- JSON: MCP tools invoked
+    sprint_id TEXT,                   -- optional link to sprint
+    work_item_id TEXT,                -- optional link to work item
+    tags TEXT DEFAULT '[]',           -- JSON array
+    message_count INTEGER DEFAULT 0,
+    metadata TEXT DEFAULT '{}',       -- JSON: extra (model used, tokens, etc.)
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Individual messages within an interaction
+CREATE TABLE interaction_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    interaction_id TEXT NOT NULL,      -- interactions.id
+    role TEXT NOT NULL,                -- human | assistant | tool
+    content TEXT NOT NULL,
+    tool_calls TEXT,                   -- JSON: tool calls made
+    token_count INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (interaction_id) REFERENCES interactions(id)
+);
+
+-- Sprint definitions
+CREATE TABLE sprints (
+    id TEXT PRIMARY KEY,              -- 'sprint-2026-w07'
+    name TEXT NOT NULL,               -- "Sprint 7 — Gamification"
+    goal TEXT,                        -- sprint goal
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT DEFAULT 'planned'     -- planned | active | completed | cancelled
+        CHECK(status IN ('planned','active','completed','cancelled')),
+    velocity INTEGER,                 -- story points completed (calculated)
+    team_capacity INTEGER,            -- total story points available
+    summary TEXT,                     -- AI-generated sprint summary
+    retrospective TEXT,               -- AI-generated retrospective
+    created_by TEXT,                  -- team_members.id
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Work items (tasks, stories, bugs — Jira-like)
+CREATE TABLE work_items (
+    id TEXT PRIMARY KEY,              -- 'MAL-001'
+    sprint_id TEXT,                   -- optional sprint
+    title TEXT NOT NULL,
+    description TEXT,
+    type TEXT DEFAULT 'task'           -- epic | story | task | bug | spike
+        CHECK(type IN ('epic','story','task','bug','spike')),
+    status TEXT DEFAULT 'backlog'      -- backlog | todo | in_progress | review | done | cancelled
+        CHECK(status IN ('backlog','todo','in_progress','review','done','cancelled')),
+    priority TEXT DEFAULT 'medium'     -- critical | high | medium | low
+        CHECK(priority IN ('critical','high','medium','low')),
+    story_points INTEGER,
+    assignee TEXT,                     -- team_members.id
+    reporter TEXT,                     -- team_members.id
+    labels TEXT DEFAULT '[]',          -- JSON array
+    parent_id TEXT,                    -- for sub-tasks (references work_items.id)
+    due_date TEXT,
+    completed_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Contribution events (for gamification scoring)
+CREATE TABLE contributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,             -- team_members.id
+    type TEXT NOT NULL                 -- commit | interaction | work_item | review | sprint | achievement
+        CHECK(type IN ('commit','interaction','work_item','review','sprint','achievement')),
+    reference_id TEXT,                 -- ID of related entity
+    points INTEGER DEFAULT 0,          -- XP awarded
+    description TEXT,                  -- human-readable
+    metadata TEXT DEFAULT '{}',        -- JSON: commit_sha, lines_changed, etc.
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Achievement definitions + user unlocks
+CREATE TABLE achievements (
+    id TEXT PRIMARY KEY,               -- 'first-commit', 'sprint-champion'
+    name TEXT NOT NULL,                -- "First Commit"
+    description TEXT NOT NULL,         -- "Make your first commit to the project"
+    icon TEXT NOT NULL,                -- emoji: "🏗️" or lucide icon name
+    category TEXT DEFAULT 'general'    -- code | collaboration | agile | exploration | mastery
+        CHECK(category IN ('code','collaboration','agile','exploration','mastery')),
+    tier TEXT DEFAULT 'bronze'         -- bronze (10 XP) | silver (25) | gold (50) | platinum (100)
+        CHECK(tier IN ('bronze','silver','gold','platinum')),
+    xp_reward INTEGER DEFAULT 10,
+    criteria TEXT NOT NULL DEFAULT '{}', -- JSON: machine-readable unlock conditions
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE user_achievements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    achievement_id TEXT NOT NULL,
+    unlocked_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(user_id, achievement_id),
+    FOREIGN KEY (user_id) REFERENCES team_members(id),
+    FOREIGN KEY (achievement_id) REFERENCES achievements(id)
+);
+
+-- Indexes
+CREATE INDEX idx_interactions_user ON interactions(user_id);
+CREATE INDEX idx_interactions_sprint ON interactions(sprint_id);
+CREATE INDEX idx_interactions_session ON interactions(session_id);
+CREATE INDEX idx_interaction_messages_interaction ON interaction_messages(interaction_id);
+CREATE INDEX idx_work_items_sprint ON work_items(sprint_id);
+CREATE INDEX idx_work_items_assignee ON work_items(assignee);
+CREATE INDEX idx_work_items_status ON work_items(status);
+CREATE INDEX idx_contributions_user ON contributions(user_id);
+CREATE INDEX idx_contributions_type ON contributions(type);
+CREATE INDEX idx_user_achievements_user ON user_achievements(user_id);
+```
+
+FTS5 update — extend `catalog_fts` or create a second `interactions_fts`:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS interactions_fts USING fts5(
+    id, title, summary, tags,
+    content='',
+    tokenize='porter unicode61'
+);
+```
+
+### New MCP Tools (~20 tools, 4 new files)
+
+#### interactions.ts (4 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_log_interaction` | Save a conversation session with messages | session_id, user_id, source, messages[], sprint_id?, work_item_id? |
+| `mal_list_interactions` | Browse interactions with filters | user_id?, sprint_id?, source?, date range, limit/offset |
+| `mal_get_interaction` | Get full interaction detail + messages | id → returns interaction + all messages |
+| `mal_search_interactions` | Full-text search in past conversations | query, user_id?, date range |
+
+#### sprints.ts (4 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_create_sprint` | Create a new sprint | name, goal, start_date, end_date, team_capacity? |
+| `mal_list_sprints` | List sprints with filters | status?, date range, limit/offset |
+| `mal_get_sprint` | Get sprint detail + work items + velocity | id → returns sprint + items + AI summary |
+| `mal_update_sprint` | Update sprint status/metadata | id, status?, goal?, retrospective? |
+
+#### work-items.ts (4 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_create_work_item` | Create a work item (task/story/bug) | title, type, priority, sprint_id?, assignee?, story_points? |
+| `mal_list_work_items` | List/filter work items | sprint_id?, assignee?, status?, type?, priority? |
+| `mal_get_work_item` | Get work item detail + history | id → returns item + related interactions |
+| `mal_update_work_item` | Update status, assignee, points | id, status?, assignee?, completed_at? |
+
+#### team.ts (3 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_register_team_member` | Register a team member | id, name, email?, role? |
+| `mal_get_team_member` | Get profile + stats + achievements | id → returns member + XP + achievements + contribution history |
+| `mal_list_team_members` | List all team members | limit/offset, sort by XP? |
+
+#### gamification.ts (3 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_get_leaderboard` | Team rankings with XP, level, streaks | period? (week/sprint/all-time), limit |
+| `mal_get_achievements` | List achievements + user's unlocked | user_id?, category? |
+| `mal_log_contribution` | Record a contribution + award XP | user_id, type, reference_id, points, description |
+
+#### analytics.ts (2 tools)
+
+| Tool | Action | Key Fields |
+|------|--------|------------|
+| `mal_get_commit_activity` | Git commit data for graphs | repo_path?, days?, user_id? → returns daily counts, per-user stats |
+| `mal_get_sprint_report` | Sprint analytics with AI summary | sprint_id → velocity, burndown data, completion %, AI analysis |
+
+**Total**: 22 existing + 20 new = **42 MCP tools**
+
+### LangGraph Multi-Agent System (4 Specialized Agents)
+
+All agents use **GPT-4o** via `langchain-openai`, with MCP tools bound via `langchain-mcp-adapters`. Each agent is a LangGraph `StateGraph` with its own state, system prompt, and tool subset.
+
+#### Agent 1: Interaction Analyzer
+
+```
+Trigger: After each chat session ends (or on-demand)
+Input:   Raw conversation messages
+Output:  Structured analysis stored back to MCP
+
+Graph:   START → analyze → extract_decisions → extract_actions → store → END
+
+Tools used: mal_log_interaction, mal_search_interactions, mal_get_work_item,
+            mal_log_contribution
+```
+
+Responsibilities:
+- Summarize conversation in 2-3 sentences
+- Extract key decisions (what was decided, why, alternatives considered)
+- Extract action items (what needs to happen next, who owns it)
+- Identify MCP tools that were used
+- Auto-link to sprints/work items if mentioned
+- Award interaction XP to the user
+- Tag the conversation for searchability
+
+#### Agent 2: Sprint Reporter
+
+```
+Trigger: On-demand (user requests sprint report) or scheduled (sprint end)
+Input:   Sprint ID
+Output:  Sprint summary + retrospective + velocity data
+
+Graph:   START → gather_data → analyze_velocity → generate_summary
+         → generate_retro → store → END
+
+Tools used: mal_get_sprint, mal_list_work_items, mal_list_interactions,
+            mal_get_commit_activity, mal_update_sprint
+```
+
+Responsibilities:
+- Calculate velocity (story points done vs planned)
+- Generate burndown data points for charting
+- Analyze completion rates by type (stories vs bugs vs tasks)
+- Identify blockers and risks from interactions
+- Generate retrospective ("What went well / What could improve / Action items")
+- Compare velocity with previous sprints (trend)
+
+#### Agent 3: Next Steps Suggester
+
+```
+Trigger: On-demand (user visits Next Steps page or asks in chat)
+Input:   Current context (active sprint, user, recent activity)
+Output:  Prioritized list of suggested actions with reasoning
+
+Graph:   START → gather_context → analyze_priorities → generate_suggestions
+         → rank_and_format → END
+
+Tools used: mal_list_work_items, mal_list_sprints, mal_list_interactions,
+            mal_get_commit_activity, mal_get_leaderboard
+```
+
+Responsibilities:
+- Analyze open work items (what's in progress, what's blocked)
+- Check sprint timeline (days remaining, points left)
+- Review recent interactions (unresolved questions, pending decisions)
+- Consider commit activity patterns (areas untouched, areas with high churn)
+- Generate 5-10 specific, actionable suggestions with priority and reasoning
+- **Not hardcoded**: Every suggestion is grounded in real data from MCP tools
+
+#### Agent 4: Contribution Scorer
+
+```
+Trigger: After commits, interactions, work item updates
+Input:   Contribution event (commit, interaction, work item completion)
+Output:  XP awarded, achievements unlocked, streak updated
+
+Graph:   START → evaluate → calculate_xp → check_achievements
+         → update_profile → END
+
+Tools used: mal_log_contribution, mal_get_team_member, mal_get_achievements,
+            mal_register_team_member (update XP/level/streak)
+```
+
+XP Calculation:
+- **Commit**: base 10 XP + 1 XP per 10 lines changed (cap 50 XP)
+- **Interaction**: base 5 XP + 3 XP per tool used + 5 XP if decisions extracted (cap 30 XP)
+- **Work item completed**: story_points × 10 XP
+- **Sprint completed on time**: 50 XP bonus
+- **Streak multiplier**: +10% per consecutive day (cap +70% at 7 days)
+
+Levels (calculated from total XP):
+
+| Level | Title | XP Required |
+|-------|-------|-------------|
+| 1-5 | Apprentice | 0 — 500 |
+| 6-10 | Developer | 501 — 2,000 |
+| 11-15 | Senior | 2,001 — 5,000 |
+| 16-20 | Lead | 5,001 — 10,000 |
+| 21+ | Architect | 10,001+ |
+
+### Achievement System (Seed Data)
+
+| ID | Name | Icon | Tier | Category | Criteria |
+|----|------|------|------|----------|----------|
+| `first-commit` | First Commit | 🏗️ | bronze | code | 1 commit logged |
+| `ten-commits` | Consistent Coder | 💻 | silver | code | 10 commits |
+| `hundred-commits` | Code Machine | ⚡ | gold | code | 100 commits |
+| `first-chat` | Conversationalist | 💬 | bronze | collaboration | 1 interaction logged |
+| `fifty-chats` | Knowledge Seeker | 📚 | silver | collaboration | 50 interactions |
+| `tool-explorer` | Tool Explorer | 🔧 | silver | exploration | Use 10 different MCP tools |
+| `tool-master` | Tool Master | 🛠️ | gold | exploration | Use all 42 MCP tools |
+| `sprint-runner` | Sprint Runner | 🏃 | bronze | agile | Complete 1 sprint |
+| `sprint-champion` | Sprint Champion | 🏆 | gold | agile | Lead velocity for 3 sprints |
+| `bug-slayer` | Bug Slayer | 🐛 | silver | code | Close 10 bugs |
+| `on-fire` | On Fire | 🔥 | gold | mastery | 7-day contribution streak |
+| `unstoppable` | Unstoppable | 💎 | platinum | mastery | 30-day contribution streak |
+| `decision-maker` | Decision Maker | 🎯 | silver | collaboration | 20 decisions logged |
+| `architect` | Architect | 👑 | platinum | mastery | Reach level 20 |
+
+### Frontend Evolution
+
+The frontend grows from a 2-panel layout to a **multi-page application** with React Router:
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  MAL Hub  ●  Sprint 7 — Day 3/14           jorge ★ Lv.12  1847 XP │
+│           ░░░░░░░░░░░░░░░░░▓▓▓▓▓  (72% to Lv.13)                │
+├──────┬─────────────────────────────────────────────────────────────┤
+│      │                                                             │
+│  💬  │  Page content changes based on route:                       │
+│ Chat │                                                             │
+│      │  /              → Dashboard overview (activity feed,        │
+│  📋  │                   sprint progress, quick stats)             │
+│Sprint│                                                             │
+│      │  /chat          → AI Chat (existing, enhanced with          │
+│  📝  │                   context injection from past interactions) │
+│Items │                                                             │
+│      │  /sprint        → Sprint Board (Kanban columns:             │
+│  📈  │                   Backlog → Todo → In Progress →            │
+│Stats │                   Review → Done) + burndown chart           │
+│      │                                                             │
+│  🏆  │  /backlog       → Work Item management (create, filter,     │
+│Board │                   assign, prioritize, bulk actions)         │
+│      │                                                             │
+│  🔮  │  /analytics     → Commit graphs, team velocity,            │
+│Next  │                   contribution heatmap (Recharts)           │
+│      │                                                             │
+│  📚  │  /leaderboard   → Rankings, XP comparison, achievement     │
+│ Hist │                   showcase, skill progression radar chart   │
+│      │                                                             │
+│  ⚙️  │  /next-steps    → AI-generated suggestions with            │
+│Prefs │                   priority, reasoning, linked items         │
+│      │                                                             │
+│      │  /history       → Interaction browser with full-text        │
+│      │                   search, timeline, filters                 │
+│      │                                                             │
+│      │  /profile/:id   → Team member profile, achievements,       │
+│      │                   contribution graph, skill radar           │
+│      │                                                             │
+│      │  /catalog       → Existing catalog dashboard (moved)        │
+│      │                                                             │
+└──────┴─────────────────────────────────────────────────────────────┘
+```
+
+Key frontend additions:
+- **React Router v6** for multi-page navigation
+- **Recharts** for all visualizations (commit graphs, burndown, velocity, contribution heatmaps, skill radar)
+- **Drag-and-drop Kanban** for sprint board (using `@dnd-kit/core`)
+- **XP bar + level indicator** in header (always visible)
+- **Achievement toast notifications** when badges are unlocked
+- **Activity feed** on dashboard home (real-time team activity)
+- **Context injection**: Chat agent automatically receives current sprint goals, open work items, and recent decisions as context
+- **Explicit placeholder marking**: Any data that is demo/seed data will show a clear `[SAMPLE DATA]` badge in the UI — never silently fake real data
+
+### Proactive Additions (My Recommendations)
+
+These are features I recommend adding because they amplify the core vision:
+
+#### 1. Decision Journal
+Every time the Interaction Analyzer detects a key decision in a conversation, it extracts and stores it as a first-class entity in the `decisions` field. The frontend shows a searchable Decision Journal — institutional memory that new team members can browse to understand *why* things are the way they are.
+
+#### 2. Auto-Linking
+When a user mentions "sprint 7" or "MAL-042" in chat, the system automatically links the interaction to those entities. This creates a rich web of context without manual effort. The Interaction Analyzer agent handles detection and linking.
+
+#### 3. Team Pulse (Daily/Weekly Digest)
+The Sprint Reporter agent can generate automated digests:
+- **Daily**: What was done yesterday, who contributed, what's blocked
+- **Weekly**: Sprint progress, velocity trend, top contributors
+- **Sprint end**: Full retrospective with charts
+
+These can be surfaced in the dashboard home or sent via a future notification system.
+
+#### 4. Context-Aware Chat
+The existing chat agent gets enhanced with automatic context injection:
+- Current sprint name + goal + days remaining
+- Open work items assigned to the current user
+- Last 3 key decisions
+- Summary of the 5 most recent interactions
+
+This makes the agent dramatically more useful — it knows the team's current state without being told.
+
+#### 5. Skill Radar (Gamification)
+Instead of just a flat leaderboard, each team member has a **skill radar chart** showing their contribution balance across areas: Frontend, Backend, DevOps, Data, Documentation. The radar is computed from commit file paths and tool usage patterns by the Contribution Scorer agent.
+
+#### 6. Sprint Health Indicator
+A real-time "sprint health" metric visible on every page:
+- 🟢 **On Track**: velocity pace matches or exceeds plan
+- 🟡 **At Risk**: velocity is 20%+ behind pace
+- 🔴 **Behind**: velocity is 40%+ behind, or blockers unresolved >2 days
+
+Computed by the Sprint Reporter agent from work item completion rate vs days elapsed.
+
+### Implementation Phases
+
+```
+Phase 5: Data Foundation          ┐
+  5.1 New SQLite tables           │ MCP Server
+  5.2 New MCP tools (20)          │ (on-premise/ + nube/)
+  5.3 Schema migration script     │
+  5.4 Seed achievements           ┘
+         │
+Phase 6: LangGraph Agents        ┐
+  6.1 Interaction Analyzer        │ Python Backend
+  6.2 Sprint Reporter             │ (front/backend/)
+  6.3 Next Steps Suggester        │
+  6.4 Contribution Scorer         │
+  6.5 Agent orchestration         ┘
+         │
+Phase 7: Frontend — Core Pages    ┐
+  7.1 React Router + layout       │ React Frontend
+  7.2 Sprint Board (Kanban)       │ (front/frontend/)
+  7.3 Work Item management        │
+  7.4 Interaction browser         │
+  7.5 Analytics (Recharts)        ┘
+         │
+Phase 8: Gamification             ┐
+  8.1 XP engine + levels          │ Backend + Frontend
+  8.2 Achievement system          │
+  8.3 Leaderboard UI              │
+  8.4 Streak tracking             │
+  8.5 Profile pages + radar       ┘
+         │
+Phase 9: Intelligence             ┐
+  9.1 Next Steps page             │ Agents + Frontend
+  9.2 Context-aware chat          │
+  9.3 Sprint health indicator     │
+  9.4 Auto-linking                │
+  9.5 Decision journal            │
+  9.6 Team Pulse digests          ┘
+         │
+Phase 10: Polish                  ┐
+  10.1 Activity feed              │ Integration
+  10.2 Toast notifications        │
+  10.3 Mobile responsive          │
+  10.4 Docker Compose update      │
+  10.5 CLAUDE.md final update     ┘
+```
+
+### New Dependencies
+
+**MCP Server (on-premise/nube)**: No new dependencies — uses existing SQLite/Firestore + Zod.
+
+**Python Backend (front/backend)**:
+```
+# New
+langgraph-checkpoint>=2.0.0     # Agent memory/checkpointing (InMemorySaver)
+simple-git>=0.1.0               # or GitPython — for git log parsing
+apscheduler>=3.10.0             # Scheduled agent runs (Team Pulse, achievement checks)
+```
+
+**React Frontend (front/frontend)**:
+```
+# New
+react-router-dom@^6             # Multi-page routing
+recharts@^2.12                  # Charts (commit graphs, burndown, velocity, radar)
+@dnd-kit/core@^6                # Drag-and-drop for Kanban board
+@dnd-kit/sortable@^8            # Sortable items in Kanban columns
+date-fns@^3                     # Date formatting and manipulation
+react-hot-toast@^2              # Toast notifications for achievements
+framer-motion@^11               # Animations (XP bar, achievement unlocks, transitions)
+```
+
+### New Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GIT_REPO_PATH` | No | `.` | Path to git repo for commit analytics |
+| `ACHIEVEMENT_CHECK_INTERVAL` | No | `300` | Seconds between achievement check runs |
+| `TEAM_PULSE_ENABLED` | No | `false` | Enable daily/weekly digest generation |
+| `CONTEXT_INJECTION_ENABLED` | No | `true` | Inject sprint/items context into chat agent |
+

@@ -253,3 +253,88 @@ npm run build    # type-check
 - Components: functional, hooks-based, no class components
 - State: React Query for server state, useState/useRef for local state
 - Styling: Tailwind CSS with custom `mal-*` color palette
+
+## Roadmap: Next Steps for front/
+
+> Full roadmap details (data model, all 20 new MCP tools, architecture diagrams) are in the root `CLAUDE.md` under **"Roadmap: Team Collaboration Platform"**.
+
+### Summary of What's Coming
+
+The front/ evolves from a 2-panel chat+dashboard into a **multi-page team collaboration platform**:
+
+**Backend — LangGraph Multi-Agent System**:
+- 4 new specialized LangGraph agents (all GPT-4o):
+  - **Interaction Analyzer** — Summarizes conversations, extracts decisions and action items, auto-links to sprints/work items
+  - **Sprint Reporter** — Generates sprint summaries, velocity analysis, retrospectives, burndown data
+  - **Next Steps Suggester** — Context-aware suggestions grounded in real MCP data (open items, recent activity, sprint timeline)
+  - **Contribution Scorer** — Evaluates commits/interactions/completions, awards XP, checks achievement unlocks
+- New REST endpoints for sprints, work items, team, leaderboard, analytics
+- New WebSocket events for agent streaming (same pattern as existing chat)
+- Git integration module for commit analytics (`git log` parsing)
+- Scheduled tasks: achievement checks, Team Pulse digests
+
+**Frontend — Multi-Page App with Gamification**:
+- React Router v6 for navigation (/, /chat, /sprint, /backlog, /analytics, /leaderboard, /next-steps, /history, /profile/:id, /catalog)
+- Sprint Board — Kanban with drag-and-drop (`@dnd-kit`)
+- Work Item management — create, filter, assign, prioritize
+- Analytics — Commit graphs, velocity charts, burndown, contribution heatmaps (`recharts`)
+- Leaderboard — XP rankings, level progression, streak tracking
+- Achievements — Unlockable badges with toast notifications
+- Profile pages — Skill radar chart, contribution graph, achievement showcase
+- Next Steps page — AI-generated prioritized suggestions with reasoning
+- Interaction browser — Full-text search through past conversations
+- XP bar + level indicator always visible in header
+- Context-aware chat — Agent auto-receives sprint goals, open items, recent decisions
+- **Explicit placeholder policy**: Any demo/seed data shows `[SAMPLE DATA]` badge — never silently fake real data
+
+**New Dependencies**:
+```
+# Backend (Python)
+langgraph-checkpoint>=2.0.0
+apscheduler>=3.10.0
+
+# Frontend (npm)
+react-router-dom@^6
+recharts@^2.12
+@dnd-kit/core@^6
+@dnd-kit/sortable@^8
+date-fns@^3
+react-hot-toast@^2
+framer-motion@^11
+```
+
+### Implementation Order
+
+```
+Phase 6: LangGraph Agents (backend)
+  6.1 Interaction Analyzer agent
+  6.2 Sprint Reporter agent
+  6.3 Next Steps Suggester agent
+  6.4 Contribution Scorer agent
+  6.5 Agent orchestration + new REST/WS endpoints
+
+Phase 7: Frontend Core Pages
+  7.1 React Router + new layout with sidebar nav
+  7.2 Sprint Board (Kanban)
+  7.3 Work Item management
+  7.4 Interaction browser
+  7.5 Analytics dashboards (Recharts)
+
+Phase 8: Gamification
+  8.1 XP engine + level calculation
+  8.2 Achievement system + toast notifications
+  8.3 Leaderboard UI
+  8.4 Streak tracking
+  8.5 Profile pages + skill radar
+
+Phase 9: Intelligence
+  9.1 Next Steps page
+  9.2 Context-aware chat (context injection)
+  9.3 Sprint health indicator
+  9.4 Auto-linking (mentions → entities)
+  9.5 Decision journal
+  9.6 Team Pulse digests
+```
+
+> Phase 5 (Data Foundation) is in the MCP server (on-premise/nube), not in front/.
+> Phases 6-9 are all in front/. Phase 10 (Polish) spans everything.
