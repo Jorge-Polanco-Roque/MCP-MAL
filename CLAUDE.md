@@ -197,6 +197,23 @@ docker compose up --build          # MCP :3000 + Backend :8000 + Frontend :80
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
+│                    Browser (React App :5173)                     │
+│          Chat (WebSocket) + Dashboard (REST)                    │
+└──────────┬──────────────────────────┬───────────────────────────┘
+           │ WS /ws/chat              │ GET /api/*
+           ▼                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  FastAPI Backend (:8000)                         │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │              LangGraph Agent (GPT-4o)                      │ │
+│  │  START → call_model → [tool_calls?] → ToolNode → loop/END │ │
+│  └──────────────────────┬─────────────────────────────────────┘ │
+│                         │ langchain-mcp-adapters                 │
+│                         │ MultiServerMCPClient (streamable_http) │
+└─────────────────────────┼───────────────────────────────────────┘
+                          │ HTTP (MCP Streamable HTTP)
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
 │                        Claude Code / LLM                        │
 │                     (MCP Client / Consumer)                     │
 └──────────────────┬──────────────────────┬───────────────────────┘
@@ -795,6 +812,20 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 - Terraform: use tfvars for env-specific config, conditional resources via variables
 - Dependencies: `helmet` for security headers, `cors` for CORS, `@types/cors` for types
 
+### front/ specific conventions
+
+- Python: PEP 8, type hints, Pydantic v2 models, async/await throughout
+- TypeScript: strict mode, path aliases (`@/`), Tailwind utility classes
+- Components: functional, hooks-based, no class components
+- State: React Query for server state (dashboard), useState/useRef for local state (chat)
+- Styling: Tailwind CSS with custom `mal-*` color palette, shadcn-style UI components
+- WebSocket: `useChat` hook manages streaming state machine (token/tool_call/tool_result/done)
+- REST: React Query with 30s stale time, auto-refetch for health (30s) and stats (60s)
+- MCP client: `MultiServerMCPClient` with `streamable_http` transport, no context manager
+- Agent: LangGraph `StateGraph` with 2 nodes (`call_model` + `ToolNode`), conditional edges
+- Streaming: `agent.astream_events(version="v2")` for real-time token + tool call delivery
+- Internal LangGraph keys (`runtime`, `config`, `callbacks`, `store`, `context`) must be filtered from `on_tool_start` events before JSON serialization
+
 ## Test Status
 
 - **on-premise**: 10/10 tests passing (vitest)
@@ -811,8 +842,14 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
   - `test_agent.py` — 2 tests (graph compilation, system prompt content)
   - `test_api.py` — 1 test (health endpoint with mocked MCP)
 - **front/frontend**: TypeScript strict + Vite build — 0 errors
-- **front/ E2E** (verified manually):
-  - MCP server (:3000) → 22 tools loaded
-  - Backend (:8000) → agent ready, all REST endpoints return correct data
-  - Frontend (:5173) → serves HTML, proxies /api and /ws to backend
-  - WebSocket chat with real GPT-4o → 3/3 tool-calling scenarios passed (mal_list_skills, mal_health_check, mal_search_catalog)
+- **front/ E2E** (13/13 automated test suite passing):
+  - MCP server (:3000) → health ok, 22 tools loaded
+  - Backend (:8000) → mcp:online, agent:ready, tools_count:22
+  - REST: GET /api/catalog/skills, /commands, /subagents, /mcps → all return data
+  - REST: GET /api/stats → catalog totals correct
+  - WebSocket chat with real GPT-4o → 4/4 scenarios passed:
+    - "Lista todos los skills" → `mal_list_skills` → markdown table (2.2s)
+    - "Check server health" → `mal_health_check` → health report (2.5s)
+    - "Search catalog for prueba" → `mal_search_catalog` → search results (2.4s)
+    - "Dame las estadísticas" → `mal_get_usage_stats` → usage stats (1.8s)
+  - Frontend (:5173) → serves HTML, Vite proxies /api and /ws to backend
