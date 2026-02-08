@@ -77,7 +77,7 @@ v001/
     │   │   ├── database.ts        ← IDatabase interface
     │   │   ├── storage.ts         ← IStorage interface (+ optional contentType)
     │   │   ├── secrets.ts         ← ISecrets interface
-    │   │   ├── auth.ts            ← timing-safe, multi-key, rate limiting
+    │   │   ├── auth.ts            ← timing-safe, named keys, rate limiting, identity tracking
     │   │   └── gcp/
     │   │       ├── firestore.adapter.ts     ← configurable DB ID, fixed search total
     │   │       ├── gcs.adapter.ts           ← retry + backoff, content-type, size limit
@@ -89,7 +89,7 @@ v001/
     ├── tests/
     │   ├── services/
     │   │   ├── firestore.adapter.test.ts  ← 9 tests (CRUD, pagination, update, delete)
-    │   │   └── auth.test.ts               ← 6 tests (timing-safe, multi-key, rate limit)
+    │   │   └── auth.test.ts               ← 11 tests (parseApiKeys, named keys, identity, rate limit)
     │   ├── tools/
     │   │   ├── registry.test.ts           ← 1 test
     │   │   └── commands.test.ts           ← 2 tests
@@ -97,6 +97,10 @@ v001/
     │   │   └── http.test.ts               ← 2 tests (startup, shutdown)
     │   └── fixtures/
     │       └── seed-data.json
+    ├── scripts/
+    │   ├── setup-gcp.sh              ← interactive GCP setup
+    │   ├── seed-catalog.ts           ← seed Firestore with sample data
+    │   └── manage-keys.ts            ← API key management CLI (list/add/show/remove)
     └── terraform/
         ├── main.tf                ← Cloud Run, Firestore, GCS, VPC connector
         ├── firestore.tf           ← 7 composite indexes + daily backup
@@ -132,10 +136,11 @@ npm run build              # tsc
 npm run dev                # tsx watch mode
 npm run dev:local          # docker compose up --build (Firestore + GCS emulators)
 npm run start:gcp          # HTTP transport (Cloud Run)
-npm test                   # vitest run  (20 tests, all passing)
+npm test                   # vitest run  (25 tests, all passing)
 npm run test:integration   # tests against local emulators
 npm run lint               # eslint src/
 npm run seed               # Seed Firestore catalog
+npm run keys -- list       # API key management (list/add/show/remove)
 npm run docker:build       # Build Docker image locally
 npm run clean              # rm -rf dist node_modules
 ```
@@ -227,7 +232,7 @@ The HTTP transport (`src/transport/http.ts`) implements MCP spec-compliant sessi
 ```
 Client                              Server (Express + helmet + CORS)
   │                                     │
-  ├─ POST /mcp (no session-id) ────────►│ authMiddleware (timing-safe, rate-limited)
+  ├─ POST /mcp (no session-id) ────────►│ authMiddleware (timing-safe, named keys, rate-limited)
   │  { method: "initialize" }           │   ├── sessions.size >= MAX_SESSIONS? → 503
   │                                     │   ├── isInitializeRequest(body)?
   │                                     │   │   ├── YES: Create StreamableHTTPServerTransport
@@ -427,8 +432,8 @@ Spread across 4 Terraform files with 10 variables and 7 outputs:
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
 │  │ Cloud Run    │  │ Firestore    │  │ Secret Manager    │  │
-│  │ mal-mcp-hub  │  │ (native)     │  │ mal-mcp-api-keys  │  │
-│  │ 0→10 inst.   │  │ DB: mal-     │  │                   │  │
+│  │ mal-mcp-hub  │  │ (native)     │  │ API_KEY secret    │  │
+│  │ 0→10 inst.   │  │ DB: mal-     │  │ (named JSON obj)  │  │
 │  │ 512Mi/1CPU   │  │  catalog     │  │                   │  │
 │  │ VPC egress   │  │ 7 indexes    │  │                   │  │
 │  └──────────────┘  │ daily backup │  └───────────────────┘  │
@@ -637,6 +642,45 @@ Important: The `Accept: application/json, text/event-stream` header is **require
 | `LOG_LEVEL` | No | `info` | pino log level |
 | `NODE_ENV` | No | `production` | Node environment |
 
+## nube/ API Key Management
+
+### Key Format in Secret Manager
+
+The `API_KEY` secret in Secret Manager supports 4 formats, parsed by `parseApiKeys()` in `auth.ts`:
+
+| Format | Example | Use Case |
+|--------|---------|----------|
+| Named keys (recommended) | `{"alice": "key-xxx", "bob": "key-yyy"}` | Multi-user with identity tracking |
+| JSON array | `["key1", "key2"]` | Multi-key without identity |
+| Comma-separated | `key1,key2,key3` | Simple multi-key |
+| Single key | `mykey123` | Single user |
+
+Named keys (format 1) are recommended because they:
+- Attach `apiKeyOwner` to each request for audit logging (`logger.info({ user: "alice" })`)
+- Enable per-user key rotation without affecting others
+- Make it clear who is using the system in logs
+
+### manage-keys.ts CLI
+
+```bash
+cd nube
+npm run keys -- list             # List all keys (masked: first 8 + last 4 chars)
+npm run keys -- add <name>       # Generate and add a new key (mal_<24 bytes base64url>)
+npm run keys -- show <name>      # Show full key for a user
+npm run keys -- remove <name>    # Revoke a user's key
+```
+
+Requires: `GCP_PROJECT_ID` env var + `gcloud` auth. Reads/writes the `API_KEY` secret in Secret Manager as a JSON object.
+
+### Auth Flow
+
+```
+Request → x-api-key header → rate limit check (10 failures/min/IP)
+  → max key length (256 chars) → parseApiKeys(secret) → timingSafeCompare()
+  → match? → set req.apiKeyOwner = matched.name → log identity → next()
+  → no match? → recordFailure(ip) → 403
+```
+
 ## nube/ Dependencies
 
 Production: `@modelcontextprotocol/sdk`, `express`, `zod`, `pino`, `@google-cloud/firestore`, `@google-cloud/storage`, `@google-cloud/secret-manager`, `helmet`, `cors`
@@ -663,7 +707,7 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 9. **Firestore search total count** (fixed) — Previously `search()` returned `total: items.length` (page count, not real total). Now uses `searchQuery.count().get()` for accurate total. Same fix applied to `list()` which now counts on the filtered query.
 
-10. **Auth timing attacks** (fixed) — Auth comparison now uses `crypto.timingSafeEqual()` instead of `===`. Supports multiple API keys (comma-separated or JSON array in Secret Manager).
+10. **Auth timing attacks** (fixed) — Auth comparison uses `crypto.timingSafeEqual()` instead of `===`. `parseApiKeys()` supports 4 formats: named JSON object (recommended: `{"alice": "key-xxx"}`), JSON array, comma-separated, or single key. Named keys attach `apiKeyOwner` to the request for audit logging.
 
 11. **Session memory leaks** (fixed) — HTTP transport now tracks `lastActivity` per session, runs cleanup every 60s, enforces `MAX_SESSIONS` limit (503 on overflow), and provides `TransportHandle.closeAllSessions()` for graceful shutdown.
 
@@ -691,7 +735,7 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 ### nube/ specific conventions
 
 - All configurable values via env vars with sensible defaults (never hardcoded)
-- Auth: timing-safe comparison, support multi-key, rate limit on failures
+- Auth: timing-safe comparison, named keys (recommended), `apiKeyOwner` identity tracking, rate limit on failures
 - GCS: retry with backoff on transient errors, validate file sizes
 - Secrets: always add timeout, cache with configurable TTL
 - HTTP transport: track session activity, enforce limits, return `TransportHandle`
@@ -705,9 +749,9 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
   - `sqlite.adapter.test.ts` — 6 tests (ping, CRUD, pagination, delete, null handling)
   - `registry.test.ts` — 2 tests (tool registration, full CRUD flow)
   - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
-- **nube**: 20/20 tests passing (vitest)
+- **nube**: 25/25 tests passing (vitest)
   - `firestore.adapter.test.ts` — 9 tests (CRUD, pagination, update, delete, custom DB ID)
-  - `auth.test.ts` — 6 tests (valid/invalid key, missing header, multi-key, rate limit)
+  - `auth.test.ts` — 11 tests (parseApiKeys 4 formats, valid/invalid key, missing header, multi-key comma + JSON array, named keys + apiKeyOwner, max length)
   - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
   - `http.test.ts` — 2 tests (server startup, graceful shutdown)
   - `registry.test.ts` — 1 test (tool registration)

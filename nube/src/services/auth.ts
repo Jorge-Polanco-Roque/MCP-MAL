@@ -53,6 +53,51 @@ function timingSafeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+/**
+ * Parse API keys from Secret Manager value.
+ * Supports 4 formats:
+ *   1. Named keys (recommended): {"alice": "key-xxx", "bob": "key-yyy"}
+ *   2. JSON array: ["key1", "key2"]
+ *   3. Comma-separated: "key1,key2"
+ *   4. Single key: "mykey123"
+ *
+ * Returns array of { name, key } pairs.
+ */
+function parseApiKeys(raw: string): Array<{ name: string; key: string }> {
+  try {
+    const parsed = JSON.parse(raw);
+
+    // Format 1: Named keys — { "alice": "key-xxx" }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return Object.entries(parsed).map(([name, key]) => ({
+        name,
+        key: String(key),
+      }));
+    }
+
+    // Format 2: JSON array — ["key1", "key2"]
+    if (Array.isArray(parsed)) {
+      return parsed.map((key, i) => ({
+        name: `key-${i}`,
+        key: String(key),
+      }));
+    }
+  } catch {
+    // Not JSON — fall through
+  }
+
+  // Format 3: Comma-separated — "key1,key2"
+  if (raw.includes(",")) {
+    return raw.split(",").map((k, i) => ({
+      name: `key-${i}`,
+      key: k.trim(),
+    }));
+  }
+
+  // Format 4: Single key
+  return [{ name: "default", key: raw }];
+}
+
 export function createAuthMiddleware(secrets: ISecrets) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
@@ -81,27 +126,25 @@ export function createAuthMiddleware(secrets: ISecrets) {
     }
 
     const validKeysRaw = await secrets.get("API_KEY");
+    const validKeys = parseApiKeys(validKeysRaw);
 
-    // Support multiple keys: comma-separated or JSON array
-    let validKeys: string[];
-    try {
-      const parsed = JSON.parse(validKeysRaw);
-      validKeys = Array.isArray(parsed) ? parsed : [validKeysRaw];
-    } catch {
-      validKeys = validKeysRaw.includes(",")
-        ? validKeysRaw.split(",").map((k) => k.trim())
-        : [validKeysRaw];
-    }
+    // Find matching key
+    const matched = validKeys.find((entry) => timingSafeCompare(apiKey, entry.key));
 
-    const isValid = validKeys.some((key) => timingSafeCompare(apiKey, key));
-
-    if (!isValid) {
+    if (!matched) {
       recordFailure(clientIp);
       logger.warn({ ip: clientIp }, "Auth failure: invalid API key");
       res.status(403).json({ error: "Invalid API key" });
       return;
     }
 
+    // Attach user identity for downstream logging
+    (req as unknown as Record<string, unknown>).apiKeyOwner = matched.name;
+    logger.info({ ip: clientIp, user: matched.name }, "Auth success");
+
     next();
   };
 }
+
+// Export for testing
+export { parseApiKeys };

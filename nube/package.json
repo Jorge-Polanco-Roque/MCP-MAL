@@ -16,6 +16,7 @@
     "lint": "eslint src/",
     "setup": "bash scripts/setup-gcp.sh",
     "seed": "tsx scripts/seed-catalog.ts",
+    "keys": "tsx scripts/manage-keys.ts",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "docker:build": "docker build -t mal-mcp-hub .",
     "clean": "rm -rf dist node_modules"

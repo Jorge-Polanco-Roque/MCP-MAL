@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Request, Response, NextFunction } from "express";
-import { createAuthMiddleware } from "../../src/services/auth.js";
+import { createAuthMiddleware, parseApiKeys } from "../../src/services/auth.js";
 import type { ISecrets } from "../../src/services/secrets.js";
 
 function createMockSecrets(apiKey: string): ISecrets {
@@ -33,6 +33,32 @@ function createMockRes(): Response & { statusCode: number; body: unknown } {
   };
   return res as unknown as Response & { statusCode: number; body: unknown };
 }
+
+describe("parseApiKeys", () => {
+  it("should parse named keys (JSON object)", () => {
+    const keys = parseApiKeys(JSON.stringify({ alice: "key-a", bob: "key-b" }));
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toEqual({ name: "alice", key: "key-a" });
+    expect(keys[1]).toEqual({ name: "bob", key: "key-b" });
+  });
+
+  it("should parse JSON array", () => {
+    const keys = parseApiKeys(JSON.stringify(["key-1", "key-2"]));
+    expect(keys).toHaveLength(2);
+    expect(keys[0]).toEqual({ name: "key-0", key: "key-1" });
+  });
+
+  it("should parse comma-separated", () => {
+    const keys = parseApiKeys("aaa,bbb,ccc");
+    expect(keys).toHaveLength(3);
+    expect(keys[1]).toEqual({ name: "key-1", key: "bbb" });
+  });
+
+  it("should parse single key", () => {
+    const keys = parseApiKeys("single-key");
+    expect(keys).toEqual([{ name: "default", key: "single-key" }]);
+  });
+});
 
 describe("Auth Middleware", () => {
   beforeEach(() => {
@@ -104,6 +130,20 @@ describe("Auth Middleware", () => {
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalled();
+  });
+
+  it("should support named keys (JSON object) and set apiKeyOwner", async () => {
+    const secrets = createMockSecrets(JSON.stringify({ alice: "key-alice", bob: "key-bob" }));
+    const middleware = createAuthMiddleware(secrets);
+
+    const req = createMockReq({ "x-api-key": "key-bob" });
+    const res = createMockRes();
+    const next = vi.fn() as unknown as NextFunction;
+
+    await middleware(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect((req as Record<string, unknown>).apiKeyOwner).toBe("bob");
   });
 
   it("should reject API key exceeding max length", async () => {
