@@ -160,6 +160,7 @@ export function SprintsPage() {
       const currentData = queryClient.getQueryData<BoardResponse>([
         "board",
         activeSprint || undefined,
+        activeProjectId ?? undefined,
       ]);
       const item = currentData?.columns[destCol]?.find(
         (it) => it.id === activeId
@@ -179,6 +180,7 @@ export function SprintsPage() {
       const snapshot = queryClient.getQueryData<BoardResponse>([
         "board",
         activeSprint || undefined,
+        activeProjectId ?? undefined,
       ]);
 
       updateMutation.mutate(

@@ -224,7 +224,7 @@ npm run build
 
 | Endpoint | Description |
 |----------|-------------|
-| `WS /ws/chat` | Chat with the main agent. Send `{"message": "...", "history": [...], "context": "..."}`. Supports `confirm`/`confirm_response` for destructive ops. Per-connection `thread_id` for state. |
+| `WS /ws/chat` | Chat with the main agent. Send `{"message": "...", "context": "..."}`. Only the new message is sent — MemorySaver checkpointer handles history via per-connection `thread_id`. Supports `confirm`/`confirm_response` for destructive ops. |
 | `WS /ws/sprint-report` | Stream sprint report. Send `{"sprint_id": "...", "repo_path": "...", "days": 14}`. |
 | `WS /ws/next-steps` | Stream AI suggestions. Send `{"user_id": "...", "sprint_id": "..."}`. |
 
@@ -243,7 +243,7 @@ npm run build
 
 | Type | Description |
 |------|-------------|
-| `message` | User chat message (`{"message": "...", "history": [...], "context": "..."}`) |
+| `message` | User chat message (`{"message": "...", "context": "..."}`) — only the new message, no history replay |
 | `confirm_response` | User responds to confirmation (`{"type": "confirm_response", "approved": true/false}`) |
 
 ### REST — Dashboard
@@ -411,6 +411,18 @@ XP formula (mirrors server-side `calculateLevel()`):
 
 23. **Project inline editing** (enhancement) — ProjectsPage supports inline editing via `EditProjectForm` component. Only changed fields sent to API. Create project simplified to only require name (ID auto-generated).
 
+24. **Chat history quadratic growth with MemorySaver** (fixed) — The WebSocket handler was sending the full conversation history to the agent on every turn. Since `MemorySaver` checkpointer already persists history per `thread_id`, this caused messages to double each turn. Fix: only the new user message is sent — the checkpointer handles history automatically.
+
+25. **Sync LangGraph agent nodes** (fixed) — All 4 specialized agents used synchronous `model.invoke()`. MCP adapter tools are async-only (`StructuredTool`), so this raised `NotImplementedError`. All `call_model` nodes now use `async def` + `await model.ainvoke()`.
+
+26. **Blocking `_ensure_repo()` in async context** (fixed) — `data.py` used synchronous `subprocess.run()` for git clone/pull which blocks the event loop. Now wrapped in `asyncio.to_thread()`. Added URL validation to reject non-GitHub URLs.
+
+27. **`applyAutolinks` text corruption** (fixed) — `MessageBubble.tsx` used `indexOf()` for autolink replacement which could match wrong occurrences. Replaced with single-pass regex using `Map<raw, href>` for O(1) lookups.
+
+28. **Hardcoded `DEFAULT_REPO_URL` removed** (fixed) — LeaderboardPage had a hardcoded GitHub URL fallback. Now uses only `activeProject?.metadata?.repo_url`. Shows "No repository configured" when no repo is set.
+
+29. **Backend port default to 8001** (fixed) — `config.py` default changed from 8000 to 8001 to match vite proxy, Docker Compose, and documentation.
+
 ## Team Members
 
 Registered in the on-premise SQLite database:
@@ -454,3 +466,4 @@ XP is auto-synced from git commits via `mal_get_commit_activity`. To add new mem
 | Phase 10 | Polish (activity feed, toasts, error boundary, mobile responsive, Docker, docs) | Done |
 | Phase 11 | Project Management + Repos (5 MCP tools, per-project leaderboard, GitHub integration) | Done |
 | Phase 12 | Chat-First Architecture (all 47 tools via chat, interrupt/confirm for destructive ops, project inline editing) | Done |
+| Phase 13 | Code Review & Hardening (security fixes, async correctness, FTS auto-sync, on-premise/nube parity, UI fixes) | Done |

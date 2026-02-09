@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS interaction_messages (
     tool_calls TEXT,
     token_count INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (interaction_id) REFERENCES interactions(id)
 );
 
@@ -205,6 +206,7 @@ CREATE TABLE IF NOT EXISTS contributions (
     reference_id TEXT,
     points INTEGER NOT NULL DEFAULT 0,
     description TEXT,
+    project_id TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -220,7 +222,8 @@ CREATE TABLE IF NOT EXISTS achievements (
     tier TEXT NOT NULL DEFAULT 'bronze' CHECK(tier IN ('bronze','silver','gold','platinum')),
     xp_reward INTEGER NOT NULL DEFAULT 10,
     criteria TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- User-achievement junction (unlocked badges)
@@ -244,6 +247,7 @@ CREATE INDEX IF NOT EXISTS idx_work_items_assignee ON work_items(assignee);
 CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(status);
 CREATE INDEX IF NOT EXISTS idx_contributions_user ON contributions(user_id);
 CREATE INDEX IF NOT EXISTS idx_contributions_type ON contributions(type);
+CREATE INDEX IF NOT EXISTS idx_contributions_project ON contributions(project_id);
 CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);
 CREATE INDEX IF NOT EXISTS idx_sprints_status ON sprints(status);
 CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id);

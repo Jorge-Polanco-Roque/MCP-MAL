@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 router = APIRouter()
@@ -250,14 +250,10 @@ async def chat_websocket(ws: WebSocket):
                 }))
                 continue
 
-            messages: list = []
-            for msg in payload.get("history", []):
-                if msg["role"] == "user":
-                    messages.append(HumanMessage(content=msg["content"]))
-                elif msg["role"] == "assistant":
-                    messages.append(AIMessage(content=msg["content"]))
-
-            # Context-aware chat: inject project context into the message
+            # Only send the new user message — MemorySaver checkpointer
+            # already persists conversation history across turns within
+            # the same thread_id. Sending full history would cause
+            # quadratic message growth (history both sent AND stored).
             context = payload.get("context", "")
             if context:
                 enriched = (
@@ -266,12 +262,12 @@ async def chat_websocket(ws: WebSocket):
                     f"[END CONTEXT]\n\n"
                     f"{user_message}"
                 )
-                messages.append(HumanMessage(content=enriched))
+                new_message = HumanMessage(content=enriched)
             else:
-                messages.append(HumanMessage(content=user_message))
+                new_message = HumanMessage(content=user_message)
 
             await _stream_and_check_interrupt(
-                ws, agent, {"messages": messages}, config
+                ws, agent, {"messages": [new_message]}, config
             )
 
     except WebSocketDisconnect:

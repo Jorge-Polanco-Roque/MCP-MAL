@@ -6,15 +6,8 @@ import { ContributionSchema } from "../schemas/gamification.schema.js";
 import { buildQueryOptions } from "../utils/pagination.js";
 import { formatAsMarkdown } from "../utils/formatter.js";
 import { handleToolError } from "../utils/error-handler.js";
+import { calculateLevel } from "../utils/levels.js";
 import type { TeamMember, Contribution, Achievement, UserAchievement } from "../types.js";
-
-function calculateLevel(xp: number): number {
-  if (xp <= 500) return Math.max(1, Math.ceil(xp / 100));
-  if (xp <= 2000) return 5 + Math.ceil((xp - 500) / 300);
-  if (xp <= 5000) return 10 + Math.ceil((xp - 2000) / 600);
-  if (xp <= 10000) return 15 + Math.ceil((xp - 5000) / 1000);
-  return 20 + Math.ceil((xp - 10000) / 2000);
-}
 
 export function registerGamificationTools(server: McpServer, db: IDatabase): void {
 
@@ -132,6 +125,7 @@ export function registerGamificationTools(server: McpServer, db: IDatabase): voi
         if (args.user_id) {
           const userAchievements = await db.list<UserAchievement>(COLLECTIONS.USER_ACHIEVEMENTS, {
             filters: { user_id: args.user_id },
+            order_by: "unlocked_at",
             limit: 100,
           });
           unlockedIds = new Set(userAchievements.items.map(a => a.achievement_id));

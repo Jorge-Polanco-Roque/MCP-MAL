@@ -1,11 +1,45 @@
 import { z } from "zod";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { IDatabase } from "../services/database.js";
 import { COLLECTIONS } from "../constants.js";
 import { buildQueryOptions } from "../utils/pagination.js";
 import { handleToolError } from "../utils/error-handler.js";
-import type { WorkItem, Sprint, Contribution } from "../types.js";
+import { calculateLevel } from "../utils/levels.js";
+import type { WorkItem, Sprint, Contribution, TeamMember } from "../types.js";
+
+/** Points per commit: base 10 + 1 per 100 lines changed (capped at 50). */
+function commitPoints(insertions: number, deletions: number): number {
+  const linesChanged = insertions + deletions;
+  return 10 + Math.min(40, Math.floor(linesChanged / 100));
+}
+
+/**
+ * Match a git author (name + email) to an existing team member.
+ * Priority: email match → name prefix match (case-insensitive).
+ */
+function matchTeamMember(
+  gitAuthor: string,
+  gitEmail: string,
+  members: TeamMember[],
+): TeamMember | undefined {
+  // 1. Exact email match
+  const byEmail = members.find(
+    (m) => m.email && m.email.toLowerCase() === gitEmail.toLowerCase(),
+  );
+  if (byEmail) return byEmail;
+
+  // 2. Name prefix match: git "Jorge Polanco" matches member "Jorge"
+  const authorLower = gitAuthor.toLowerCase();
+  const byName = members.find(
+    (m) =>
+      authorLower === m.name.toLowerCase() ||
+      authorLower.startsWith(m.name.toLowerCase() + " "),
+  );
+  if (byName) return byName;
+
+  return undefined;
+}
 
 export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
 
@@ -14,8 +48,8 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
     "mal_get_commit_activity",
     {
       title: "Get Commit Activity",
-      description: "Get git commit activity data for visualization. Parses the local git log to extract daily commit counts, per-author stats, and file change metrics.",
-      annotations: { readOnlyHint: true },
+      description: "Get git commit activity data for visualization. Parses the local git log to extract daily commit counts, per-author stats, and file change metrics. Auto-syncs: matches git authors to team members by email/name, logs contributions per commit (dedup by hash), and updates XP/level/streak on the leaderboard.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         repo_path: z.string().optional().describe("Path to git repository (default: current working directory)"),
         days: z.number().optional().describe("Number of days to look back (default: 30)"),
@@ -29,14 +63,15 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
         const days = args.days ?? 30;
         const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
 
-        let gitCmd = `git -C "${repoPath}" log --since="${since}" --format="%H|%an|%ae|%aI|%s" --shortstat`;
+        // Use execFileSync with argument array to prevent command injection
+        const gitArgs = ["-C", repoPath, "log", `--since=${since}`, "--format=%H|%an|%ae|%aI|%s", "--shortstat"];
         if (args.author) {
-          gitCmd += ` --author="${args.author}"`;
+          gitArgs.push(`--author=${args.author}`);
         }
 
         let gitOutput: string;
         try {
-          gitOutput = execSync(gitCmd, { encoding: "utf-8", timeout: 10000 });
+          gitOutput = execFileSync("git", gitArgs, { encoding: "utf-8", timeout: 15000 });
         } catch {
           return {
             content: [{ type: "text" as const, text: `Error: Could not read git log from '${repoPath}'. Try: Ensure the path is a valid git repository.` }],
@@ -70,16 +105,112 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
           };
         }
 
-        // Daily counts
+        // ── Auto-sync: match git authors to team members ──
+        const allMembers = await db.list<TeamMember>(COLLECTIONS.TEAM_MEMBERS, { limit: 200 });
+        const members = allMembers.items;
+
+        // Build a map: git author name → resolved display name
+        const authorDisplayName: Record<string, string> = {};
+        // Build a map: git author name → team member (if matched)
+        const authorMember: Record<string, TeamMember | undefined> = {};
+
+        const seenAuthors = new Set<string>();
+        for (const c of commits) {
+          if (!seenAuthors.has(c.author)) {
+            seenAuthors.add(c.author);
+            const matched = matchTeamMember(c.author, c.email, members);
+            authorMember[c.author] = matched;
+            authorDisplayName[c.author] = matched ? matched.name : c.author;
+          }
+        }
+
+        // Auto-log contributions for new commits (dedup by commit hash)
+        const existingContribs = await db.list<Contribution>(COLLECTIONS.CONTRIBUTIONS, {
+          filters: { type: "commit" },
+          order_by: "created_at",
+          limit: 1000,
+        });
+        const loggedHashes = new Set(
+          existingContribs.items
+            .filter((c) => c.reference_id)
+            .map((c) => c.reference_id),
+        );
+
+        // Track XP awarded per member in this sync
+        const xpAwarded: Record<string, number> = {};
+
+        for (const c of commits) {
+          if (loggedHashes.has(c.hash)) continue; // already logged
+          const member = authorMember[c.author];
+          if (!member) continue; // no matching team member
+
+          const pts = commitPoints(c.insertions, c.deletions);
+          const contribData: Record<string, unknown> = {
+            user_id: member.id,
+            type: "commit",
+            reference_id: c.hash,
+            points: pts,
+            description: c.message,
+            metadata: {
+              insertions: c.insertions,
+              deletions: c.deletions,
+              files: c.files,
+              date: c.date,
+            },
+          };
+          if (args.project_id) contribData.project_id = args.project_id;
+          await db.create(COLLECTIONS.CONTRIBUTIONS, "", contribData);
+          xpAwarded[member.id] = (xpAwarded[member.id] ?? 0) + pts;
+        }
+
+        // Batch-update XP, level, and streak for affected members
+        const today = new Date().toISOString().split("T")[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+        const syncNotes: string[] = [];
+
+        for (const [memberId, awarded] of Object.entries(xpAwarded)) {
+          const member = members.find((m) => m.id === memberId);
+          if (!member) continue;
+
+          const newXp = member.xp + awarded;
+          const newLevel = calculateLevel(newXp);
+          let newStreak = member.streak_days;
+          if (member.streak_last_date === today) {
+            // already counted today
+          } else if (member.streak_last_date === yesterday) {
+            newStreak = member.streak_days + 1;
+          } else {
+            newStreak = 1;
+          }
+
+          await db.update<TeamMember>(COLLECTIONS.TEAM_MEMBERS, memberId, {
+            xp: newXp,
+            level: newLevel,
+            streak_days: newStreak,
+            streak_last_date: today,
+          } as Partial<TeamMember>);
+
+          // Update in-memory so subsequent reads are fresh
+          member.xp = newXp;
+          member.level = newLevel;
+          member.streak_days = newStreak;
+
+          syncNotes.push(
+            `Synced ${member.name}: +${awarded} XP (${newXp} total, Lv.${newLevel})`,
+          );
+        }
+
+        // ── Build markdown output using resolved display names ──
         const dailyCounts: Record<string, number> = {};
         const authorStats: Record<string, { commits: number; insertions: number; deletions: number }> = {};
 
         for (const c of commits) {
+          const displayName = authorDisplayName[c.author];
           dailyCounts[c.date] = (dailyCounts[c.date] ?? 0) + 1;
-          if (!authorStats[c.author]) authorStats[c.author] = { commits: 0, insertions: 0, deletions: 0 };
-          authorStats[c.author].commits++;
-          authorStats[c.author].insertions += c.insertions;
-          authorStats[c.author].deletions += c.deletions;
+          if (!authorStats[displayName]) authorStats[displayName] = { commits: 0, insertions: 0, deletions: 0 };
+          authorStats[displayName].commits++;
+          authorStats[displayName].insertions += c.insertions;
+          authorStats[displayName].deletions += c.deletions;
         }
 
         const totalInsertions = commits.reduce((s, c) => s + c.insertions, 0);
@@ -120,7 +251,17 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
         mdLines.push("### Recent Commits");
         mdLines.push("");
         for (const c of commits.slice(0, 10)) {
-          mdLines.push(`- \`${c.hash.substring(0, 7)}\` ${c.message} — *${c.author}* (${c.date})`);
+          const displayName = authorDisplayName[c.author];
+          mdLines.push(`- \`${c.hash.substring(0, 7)}\` ${c.message} — *${displayName}* (${c.date})`);
+        }
+
+        if (syncNotes.length > 0) {
+          mdLines.push("");
+          mdLines.push("### 🔄 Auto-Sync");
+          mdLines.push("");
+          for (const note of syncNotes) {
+            mdLines.push(`- ${note}`);
+          }
         }
 
         return { content: [{ type: "text" as const, text: mdLines.join("\n") }] };
@@ -197,6 +338,7 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
 
         // Get contributions during sprint
         const contributions = await db.list<Contribution>(COLLECTIONS.CONTRIBUTIONS, {
+          order_by: "created_at",
           limit: 100,
         });
 

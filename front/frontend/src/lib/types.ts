@@ -106,7 +106,7 @@ export interface SprintListResponse {
 
 // ─── Work Item types ───
 
-export type WorkItemStatus = "todo" | "in_progress" | "done" | "blocked";
+export type WorkItemStatus = "backlog" | "todo" | "in_progress" | "review" | "done" | "cancelled";
 export type WorkItemPriority = "low" | "medium" | "high" | "critical";
 
 export interface WorkItem {

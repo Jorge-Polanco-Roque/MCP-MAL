@@ -1,19 +1,12 @@
 import { z } from "zod";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { IDatabase } from "../services/database.js";
 import { COLLECTIONS } from "../constants.js";
 import { buildQueryOptions } from "../utils/pagination.js";
 import { handleToolError } from "../utils/error-handler.js";
+import { calculateLevel } from "../utils/levels.js";
 import type { WorkItem, Sprint, Contribution, TeamMember } from "../types.js";
-
-function calculateLevel(xp: number): number {
-  if (xp <= 500) return Math.max(1, Math.ceil(xp / 100));
-  if (xp <= 2000) return 5 + Math.ceil((xp - 500) / 300);
-  if (xp <= 5000) return 10 + Math.ceil((xp - 2000) / 600);
-  if (xp <= 10000) return 15 + Math.ceil((xp - 5000) / 1000);
-  return 20 + Math.ceil((xp - 10000) / 2000);
-}
 
 /** Points per commit: base 10 + 1 per 100 lines changed (capped at 50). */
 function commitPoints(insertions: number, deletions: number): number {
@@ -70,14 +63,15 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
         const days = args.days ?? 30;
         const since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
 
-        let gitCmd = `git -C "${repoPath}" log --since="${since}" --format="%H|%an|%ae|%aI|%s" --shortstat`;
+        // Use execFileSync with argument array to prevent command injection
+        const gitArgs = ["-C", repoPath, "log", `--since=${since}`, "--format=%H|%an|%ae|%aI|%s", "--shortstat"];
         if (args.author) {
-          gitCmd += ` --author="${args.author}"`;
+          gitArgs.push(`--author=${args.author}`);
         }
 
         let gitOutput: string;
         try {
-          gitOutput = execSync(gitCmd, { encoding: "utf-8", timeout: 10000 });
+          gitOutput = execFileSync("git", gitArgs, { encoding: "utf-8", timeout: 15000 });
         } catch {
           return {
             content: [{ type: "text" as const, text: `Error: Could not read git log from '${repoPath}'. Try: Ensure the path is a valid git repository.` }],

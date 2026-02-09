@@ -187,17 +187,19 @@ export function registerMetaTools(
       title: "Usage Stats",
       description: "Get catalog totals and usage statistics for the MCP hub",
       annotations: { readOnlyHint: true },
-      inputSchema: {
-        days: z.number().optional().describe("Number of days to look back (default 7)"),
-      },
+      inputSchema: {},
     },
-    async (args) => {
+    async () => {
       try {
-        const [skills, commands, subagents, mcps] = await Promise.all([
+        const [skills, commands, subagents, mcps, teamMembers, sprints, workItems, projects] = await Promise.all([
           db.list<SkillEntry>(COLLECTIONS.SKILLS, { limit: 1 }),
           db.list<CommandEntry>(COLLECTIONS.COMMANDS, { limit: 1 }),
           db.list<SubagentConfig>(COLLECTIONS.SUBAGENTS, { limit: 1 }),
           db.list<MCPRegistryEntry>(COLLECTIONS.MCPS, { limit: 1 }),
+          db.list<Record<string, unknown>>(COLLECTIONS.TEAM_MEMBERS, { limit: 1 }),
+          db.list<Record<string, unknown>>(COLLECTIONS.SPRINTS, { limit: 1 }),
+          db.list<Record<string, unknown>>(COLLECTIONS.WORK_ITEMS, { limit: 1 }),
+          db.list<Record<string, unknown>>(COLLECTIONS.PROJECTS, { limit: 1 }),
         ]);
 
         let report = `## MAL MCP Hub — Usage Stats\n\n`;
@@ -206,7 +208,11 @@ export function registerMetaTools(
         report += `- **Commands**: ${commands.total}\n`;
         report += `- **Subagents**: ${subagents.total}\n`;
         report += `- **MCPs**: ${mcps.total}\n`;
-        report += `\n*Period: last ${args.days ?? 7} days*\n`;
+        report += `\n### Collaboration Totals\n\n`;
+        report += `- **Projects**: ${projects.total}\n`;
+        report += `- **Sprints**: ${sprints.total}\n`;
+        report += `- **Work Items**: ${workItems.total}\n`;
+        report += `- **Team Members**: ${teamMembers.total}\n`;
 
         return { content: [{ type: "text" as const, text: report }] };
       } catch (error) {

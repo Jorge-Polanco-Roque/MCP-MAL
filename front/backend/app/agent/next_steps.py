@@ -35,10 +35,10 @@ def build_next_steps_suggester(all_tools: list):
     )
     model_with_tools = llm.bind_tools(tools)
 
-    def call_model(state: AgentState) -> dict:
+    async def call_model(state: AgentState) -> dict:
         messages = state["messages"]
         system = SystemMessage(content=NEXT_STEPS_PROMPT)
-        response = model_with_tools.invoke([system] + messages)
+        response = await model_with_tools.ainvoke([system] + messages)
         return {"messages": [response]}
 
     def should_continue(state: AgentState) -> str:

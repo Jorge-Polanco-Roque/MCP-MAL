@@ -13,8 +13,6 @@ import { fetchCommitActivity } from "@/lib/api";
 import { rankMedal, ROLE_COLORS } from "@/lib/gamification";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_REPO_URL = "https://github.com/Jorge-Polanco-Roque/MCP-MAL/tree/dev";
-
 export function LeaderboardPage() {
   const { activeProjectId, activeProject } = useProjectContext();
   const { data, isLoading, error, refetch, isFetching } = useLeaderboard(
@@ -33,11 +31,14 @@ export function LeaderboardPage() {
     ? `Project Rankings — ${activeProject.name}`
     : "Team Rankings";
 
-  // Determine repo URL from active project metadata or default
-  const repoUrl =
-    (activeProject?.metadata?.repo_url as string | undefined) ?? DEFAULT_REPO_URL;
+  // Determine repo URL from active project metadata (no hardcoded fallback)
+  const repoUrl = activeProject?.metadata?.repo_url as string | undefined;
 
   const handleSync = async () => {
+    if (!repoUrl) {
+      toast.error("No repo URL configured for this project");
+      return;
+    }
     setSyncing(true);
     try {
       await fetchCommitActivity(90, repoUrl, activeProjectId ?? undefined);
@@ -64,7 +65,7 @@ export function LeaderboardPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={handleSync} disabled={syncing || isFetching}>
+          <Button variant="ghost" size="sm" onClick={handleSync} disabled={syncing || isFetching || !repoUrl}>
             <GitBranch className={cn("mr-1 h-4 w-4", syncing && "animate-spin")} />
             {syncing ? "Syncing..." : "Sync Commits"}
           </Button>
@@ -79,20 +80,32 @@ export function LeaderboardPage() {
         {/* Repo info bar */}
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
           <GitBranch className="h-3.5 w-3.5 text-gray-400" />
-          <span className="font-medium">Source:</span>
-          <a
-            href={repoUrl.split("/tree/")[0]}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="truncate font-mono text-mal-600 hover:underline"
-          >
-            {repoUrl.split("/tree/")[0].replace("https://github.com/", "")}
-            <ExternalLink className="ml-1 inline h-3 w-3" />
-          </a>
-          <span className="text-gray-400">|</span>
-          <span className="text-gray-500">
-            * Rankings are always based on the <strong>dev</strong> branch
-          </span>
+          {repoUrl ? (
+            <>
+              <span className="font-medium">Source:</span>
+              <a
+                href={repoUrl.split("/tree/")[0]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate font-mono text-mal-600 hover:underline"
+              >
+                {repoUrl.split("/tree/")[0].replace("https://github.com/", "")}
+                <ExternalLink className="ml-1 inline h-3 w-3" />
+              </a>
+              {repoUrl.includes("/tree/") && (
+                <>
+                  <span className="text-gray-400">|</span>
+                  <span className="text-gray-500">
+                    Branch: <strong>{repoUrl.split("/tree/")[1]}</strong>
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-500">
+              No repository configured. Set a <strong>repo_url</strong> in project metadata to enable commit sync.
+            </span>
+          )}
         </div>
 
         {entries.length > 0 ? (

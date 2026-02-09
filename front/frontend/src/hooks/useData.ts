@@ -179,6 +179,7 @@ export function useUpdateWorkItem() {
       updateWorkItem(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["work-items"] });
+      qc.invalidateQueries({ queryKey: ["board"] });
       toast.success("Work item updated");
     },
     onError: (err: Error) => toast.error(`Failed to update work item: ${err.message}`),
@@ -187,7 +188,7 @@ export function useUpdateWorkItem() {
 
 // ─── Interactions ───
 
-export function useInteractions(filters?: { user_id?: string; type?: string }) {
+export function useInteractions(filters?: { user_id?: string; source?: string }) {
   return useQuery({
     queryKey: ["interactions", filters],
     queryFn: () => fetchInteractions(filters),

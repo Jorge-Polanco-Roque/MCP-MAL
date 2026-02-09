@@ -1,7 +1,9 @@
 """REST API endpoints that proxy MCP tool calls for data access."""
+import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import uuid
 from pathlib import Path
@@ -14,13 +16,30 @@ logger = logging.getLogger(__name__)
 
 REPO_CACHE_DIR = Path(os.environ.get("REPO_CACHE_DIR", "/tmp/mal-repo-cache"))
 
+# Only allow GitHub HTTPS URLs to prevent arbitrary URL cloning
+_GITHUB_URL_RE = re.compile(
+    r"^https://github\.com/[\w.\-]+/[\w.\-]+(/tree/[\w.\-/]+)?$"
+)
 
-def _ensure_repo(repo_url: str, branch: str = "dev") -> str:
-    """Clone or pull a GitHub repo into a local cache directory. Returns local path."""
+
+async def _ensure_repo(repo_url: str) -> str:
+    """Clone or pull a GitHub repo into a local cache directory. Returns local path.
+
+    Extracts the branch from the URL (e.g. /tree/dev → branch=dev).
+    Only allows GitHub HTTPS URLs to prevent arbitrary URL attacks.
+    Runs git commands in a thread pool to avoid blocking the event loop.
+    """
+    if not _GITHUB_URL_RE.match(repo_url):
+        raise HTTPException(status_code=400, detail="Only GitHub HTTPS URLs are supported (https://github.com/owner/repo)")
+
     REPO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Extract branch from URL (e.g. /tree/dev → "dev"), default to "main"
+    branch = "main"
+    if "/tree/" in repo_url:
+        branch = repo_url.split("/tree/")[1].split("/")[0]
+
     # Derive a stable folder name from the repo URL
-    # e.g. https://github.com/Jorge-Polanco-Roque/MCP-MAL/tree/dev -> Jorge-Polanco-Roque-MCP-MAL
     clean = repo_url.replace("https://github.com/", "").split("/tree/")[0]
     folder_name = clean.replace("/", "-")
     local_path = REPO_CACHE_DIR / folder_name
@@ -30,30 +49,38 @@ def _ensure_repo(repo_url: str, branch: str = "dev") -> str:
     if not clone_url.endswith(".git"):
         clone_url = clone_url + ".git"
 
-    if (local_path / ".git").exists():
-        # Pull latest
-        logger.info(f"Pulling latest for {folder_name} (branch {branch})")
-        subprocess.run(
-            ["git", "-C", str(local_path), "fetch", "--all"],
-            capture_output=True, timeout=30,
-        )
-        subprocess.run(
-            ["git", "-C", str(local_path), "checkout", branch],
-            capture_output=True, timeout=10,
-        )
-        subprocess.run(
-            ["git", "-C", str(local_path), "pull", "origin", branch],
-            capture_output=True, timeout=30,
-        )
-    else:
-        # Clone
-        logger.info(f"Cloning {clone_url} (branch {branch}) into {local_path}")
-        subprocess.run(
-            ["git", "clone", "--branch", branch, clone_url, str(local_path)],
-            capture_output=True, timeout=60,
-        )
+    def _run_git():
+        if (local_path / ".git").exists():
+            logger.info(f"Pulling latest for {folder_name} (branch {branch})")
+            result = subprocess.run(
+                ["git", "-C", str(local_path), "fetch", "--all"],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode != 0:
+                logger.warning(f"git fetch failed: {result.stderr.decode()}")
+            result = subprocess.run(
+                ["git", "-C", str(local_path), "checkout", branch],
+                capture_output=True, timeout=10,
+            )
+            if result.returncode != 0:
+                logger.warning(f"git checkout failed: {result.stderr.decode()}")
+            result = subprocess.run(
+                ["git", "-C", str(local_path), "pull", "origin", branch],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode != 0:
+                logger.warning(f"git pull failed: {result.stderr.decode()}")
+        else:
+            logger.info(f"Cloning {clone_url} (branch {branch}) into {local_path}")
+            result = subprocess.run(
+                ["git", "clone", "--branch", branch, clone_url, str(local_path)],
+                capture_output=True, timeout=60,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"git clone failed: {result.stderr.decode()}")
+        return str(local_path)
 
-    return str(local_path)
+    return await asyncio.to_thread(_run_git)
 
 
 async def _call_tool(tool_name: str, args: dict | None = None) -> Any:
@@ -94,21 +121,6 @@ async def _call_tool(tool_name: str, args: dict | None = None) -> Any:
     return {"data": str(content) if not isinstance(content, str) else content}
 
 
-def _parse_md_table(text: str) -> list[dict]:
-    """Parse a markdown table into a list of dicts. Best-effort."""
-    lines = text.strip().split("\n")
-    table_lines = [ln for ln in lines if ln.strip().startswith("|")]
-    if len(table_lines) < 3:
-        return []
-    headers = [h.strip() for h in table_lines[0].split("|")[1:-1]]
-    rows = []
-    for line in table_lines[2:]:
-        cells = [c.strip() for c in line.split("|")[1:-1]]
-        if len(cells) == len(headers):
-            rows.append(dict(zip(headers, cells)))
-    return rows
-
-
 # ────────────────────────── Sprints ──────────────────────────
 
 
@@ -126,7 +138,7 @@ async def list_sprints(status: str | None = None, project_id: str | None = None,
 @router.get("/sprints/{sprint_id}")
 async def get_sprint(sprint_id: str):
     """Get sprint details."""
-    return await _call_tool("mal_get_sprint", {"sprint_id": sprint_id})
+    return await _call_tool("mal_get_sprint", {"id": sprint_id})
 
 
 @router.post("/sprints")
@@ -208,7 +220,7 @@ async def list_work_items(
     if priority:
         args["priority"] = priority
     if assignee_id:
-        args["assignee_id"] = assignee_id
+        args["assignee"] = assignee_id
     return await _call_tool("mal_list_work_items", args)
 
 
@@ -237,7 +249,7 @@ async def update_work_item(item_id: str, body: dict):
 @router.get("/interactions")
 async def list_interactions(
     user_id: str | None = None,
-    type: str | None = None,
+    source: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ):
@@ -245,8 +257,8 @@ async def list_interactions(
     args: dict = {"limit": limit, "offset": offset}
     if user_id:
         args["user_id"] = user_id
-    if type:
-        args["type"] = type
+    if source:
+        args["source"] = source
     return await _call_tool("mal_list_interactions", args)
 
 
@@ -304,7 +316,7 @@ async def get_commit_activity(
     args: dict = {"days": days}
 
     if repo_url:
-        local_path = _ensure_repo(repo_url, branch="dev")
+        local_path = await _ensure_repo(repo_url)
         args["repo_path"] = local_path
     elif repo_path:
         args["repo_path"] = repo_path
@@ -327,7 +339,7 @@ async def get_leaderboard(limit: int = 20, project_id: str | None = None):
 @router.get("/analytics/sprint-report/{sprint_id}")
 async def get_sprint_report(sprint_id: str):
     """Get sprint analytics report."""
-    return await _call_tool("mal_get_sprint_report", {"sprint_id": sprint_id})
+    return await _call_tool("mal_get_sprint_report", {"sprint_id": sprint_id})  # note: sprint_report uses sprint_id param
 
 
 # ────────────────────────── Team ──────────────────────────
@@ -336,7 +348,7 @@ async def get_sprint_report(sprint_id: str):
 @router.get("/team/{member_id}")
 async def get_team_member(member_id: str):
     """Get team member details."""
-    return await _call_tool("mal_get_team_member", {"member_id": member_id})
+    return await _call_tool("mal_get_team_member", {"id": member_id})
 
 
 @router.get("/team")

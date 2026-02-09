@@ -6,7 +6,7 @@ import { useWorkItems, useCreateWorkItem } from "@/hooks/useData";
 import { useProjectContext } from "@/hooks/useProjectContext";
 import { cn } from "@/lib/utils";
 
-const STATUS_OPTIONS = ["", "todo", "in_progress", "done", "blocked"];
+const STATUS_OPTIONS = ["", "backlog", "todo", "in_progress", "review", "done", "cancelled"];
 const PRIORITY_OPTIONS = ["", "low", "medium", "high", "critical"];
 
 export function BacklogPage() {
@@ -117,6 +117,15 @@ export function BacklogPage() {
   );
 }
 
+function generateItemId(): string {
+  const hex = crypto
+    .getRandomValues(new Uint16Array(1))[0]
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, "0");
+  return `WI-${hex}`;
+}
+
 function CreateWorkItemForm({
   onCreated,
   onCancel,
@@ -135,6 +144,7 @@ function CreateWorkItemForm({
     e.preventDefault();
     if (!title.trim()) return;
     const data: Record<string, unknown> = {
+      id: generateItemId(),
       title: title.trim(),
       description: description.trim(),
       priority,

@@ -18,18 +18,22 @@ interface MessageBubbleProps {
 function applyAutolinks(text: string): string {
   const links = findLinks(text);
   if (links.length === 0) return text;
-  let result = text;
-  // Apply in reverse order to preserve indices
-  for (const link of [...links].reverse()) {
-    const idx = result.indexOf(link.raw);
-    if (idx >= 0) {
-      result =
-        result.slice(0, idx) +
-        `[${link.raw}](${link.href})` +
-        result.slice(idx + link.raw.length);
+
+  // Build a map: raw → href (first match wins for duplicates)
+  const linkMap = new Map<string, string>();
+  for (const link of links) {
+    if (!linkMap.has(link.raw)) {
+      linkMap.set(link.raw, link.href);
     }
   }
-  return result;
+
+  // Use regex to replace all occurrences in a single pass
+  const escaped = [...linkMap.keys()].map((r) => r.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = new RegExp(`(${escaped.join("|")})`, "g");
+  return text.replace(pattern, (match) => {
+    const href = linkMap.get(match);
+    return href ? `[${match}](${href})` : match;
+  });
 }
 
 export function MessageBubble({ message, isStreaming, onConfirmResponse }: MessageBubbleProps) {

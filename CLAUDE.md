@@ -75,26 +75,27 @@ v001/
 │   │   │   ├── work-items.ts     ← 4 tools: create/list/get/update work items
 │   │   │   ├── team.ts           ← 3 tools: register/get/list team members
 │   │   │   ├── gamification.ts   ← 3 tools: leaderboard, achievements, contributions
-│   │   │   ├── analytics.ts      ← 2 tools: commit activity, sprint report
+│   │   │   ├── analytics.ts      ← 2 tools: commit activity (auto-sync), sprint report
 │   │   │   └── projects.ts       ← 5 tools: create/list/get/update/delete projects
 │   │   ├── schemas/              ← Zod schemas (.strict())
+│   │   ├── utils/
+│   │   │   ├── error-handler.ts
+│   │   │   ├── formatter.ts
+│   │   │   ├── logger.ts         ← pino (stderr)
+│   │   │   ├── pagination.ts
+│   │   │   └── levels.ts         ← shared calculateLevel() utility
 │   │   ├── services/
 │   │   │   ├── database.ts       ← IDatabase interface
 │   │   │   ├── storage.ts        ← IStorage interface
 │   │   │   ├── secrets.ts        ← ISecrets interface
-│   │   │   ├── auth.ts           ← Bearer token auth middleware
+│   │   │   ├── auth.ts           ← timing-safe token auth middleware
 │   │   │   └── local/
 │   │   │       ├── sqlite.adapter.ts
 │   │   │       ├── filesystem.adapter.ts
 │   │   │       └── dotenv.adapter.ts
-│   │   ├── transport/
-│   │   │   ├── http.ts           ← Express + StreamableHTTP + sessions
-│   │   │   └── stdio.ts          ← StdioServerTransport
-│   │   └── utils/
-│   │       ├── error-handler.ts
-│   │       ├── formatter.ts
-│   │       ├── logger.ts         ← pino (stderr)
-│   │       └── pagination.ts
+│   │   └── transport/
+│   │       ├── http.ts           ← Express + StreamableHTTP + sessions
+│   │       └── stdio.ts          ← StdioServerTransport
 │   └── tests/
 │       ├── services/sqlite.adapter.test.ts   ← 6 tests
 │       └── tools/
@@ -111,7 +112,7 @@ v001/
     ├── src/
     │   ├── index.ts               ← entry point + graceful shutdown (SIGTERM/SIGINT)
     │   ├── server.ts              ← same as on-premise
-    │   ├── tools/                 ← same 13 files as on-premise
+    │   ├── tools/                 ← same 13 files as on-premise (including auto-sync analytics)
     │   ├── schemas/               ← same as on-premise
     │   ├── services/
     │   │   ├── database.ts        ← IDatabase interface
@@ -125,7 +126,7 @@ v001/
     │   ├── transport/
     │   │   ├── http.ts            ← session timeout + max limit, helmet, CORS, TransportHandle
     │   │   └── stdio.ts           ← StdioServerTransport
-    │   └── utils/                 ← same as on-premise
+    │   └── utils/                 ← same as on-premise (includes levels.ts)
     ├── tests/
     │   ├── services/
     │   │   ├── firestore.adapter.test.ts  ← 9 tests (CRUD, pagination, update, delete)
@@ -554,6 +555,7 @@ Key SQLite details:
 - Booleans stored as INTEGER (0/1) — `serializeValue()` handles conversion
 - Arrays/objects stored as JSON strings — `deserializeRow()` auto-parses
 - FTS5 with porter unicode61 tokenizer for full-text search
+- FTS auto-sync: `SQLiteAdapter` automatically syncs `catalog_fts` on `create()`, `update()`, `delete()` for catalog collections (skills, commands, subagents, mcps)
 - WAL mode + foreign keys enabled on connection
 
 ### Firestore Schema (nube)
@@ -968,6 +970,30 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 33. **Project inline editing** (enhancement) — ProjectsPage now supports inline editing of all project fields (name, description, repo URL, status, owner, color) via an `EditProjectForm` component that replaces the card content when editing. Only changed fields are sent to the API. Create project form simplified to only require the project name (ID auto-generated from name).
 
+34. **Command injection in `analytics.ts`** (fixed) — `mal_get_commit_activity` previously used `execSync()` with string interpolation for `repoPath` and `author`, allowing command injection via crafted repo paths. Both on-premise and nube now use `execFileSync("git", [...args])` with argument arrays. No user input is ever interpolated into shell command strings.
+
+35. **Timing-unsafe auth in on-premise** (fixed) — `on-premise/src/services/auth.ts` used `!==` for API key comparison, vulnerable to timing attacks. Now uses `crypto.timingSafeEqual()` via a `safeCompare()` helper, matching the nube implementation. Also added max key length check (256 chars).
+
+36. **Blocking subprocess in async context** (fixed) — `_ensure_repo()` in `front/backend/app/api/data.py` used synchronous `subprocess.run()` which blocks the async event loop. Now wrapped in `asyncio.to_thread()` to run in a thread pool. URL validation added to reject non-GitHub URLs before cloning.
+
+37. **Sync LangGraph agent nodes** (fixed) — All 4 specialized agents (`interaction_analyzer.py`, `sprint_reporter.py`, `next_steps.py`, `contribution_scorer.py`) used synchronous `model.invoke()` in their `call_model` nodes. MCP adapter tools are async-only (`StructuredTool`), so sync invocation raises `NotImplementedError`. All nodes now use `async def call_model()` + `await model.ainvoke()`.
+
+38. **FTS auto-sync in SQLiteAdapter** (fixed) — `catalog_fts` was only populated by the seed script. `SQLiteAdapter.create()`, `update()`, and `delete()` now automatically sync the FTS index for catalog collections (skills, commands, subagents, mcps) via `syncFtsIndex()`. Also fixed `search()` to use a separate `COUNT(*)` query for accurate total count instead of returning `rows.length`.
+
+39. **Chat history quadratic growth with MemorySaver** (fixed) — The WebSocket chat handler in `chat.py` was sending the full conversation history (`messages` list) to the agent on every turn. Since `MemorySaver` checkpointer already persists history per `thread_id`, this caused messages to double with each turn (history both sent AND stored). Fix: only the new user message is sent to the agent — the checkpointer handles history automatically.
+
+40. **`applyAutolinks` text corruption** (fixed) — `MessageBubble.tsx` used `indexOf()` for autolink replacement, which could match wrong occurrences in multi-link text, causing infinite loops or corrupted output. Replaced with a single-pass regex using `new RegExp()` with all link patterns joined, and a `Map<raw, href>` for O(1) lookups.
+
+41. **Hardcoded `DEFAULT_REPO_URL` in LeaderboardPage** (fixed) — `LeaderboardPage.tsx` had a hardcoded GitHub URL fallback. Removed. Now uses only `activeProject?.metadata?.repo_url`. If no repo is configured, shows "No repository configured" message and disables the Sync button. Branch name extracted dynamically from URL.
+
+42. **Backend port default mismatch** (fixed) — `front/backend/app/config.py` had `backend_port: int = 8000` but docs, `vite.config.ts` proxy, and Docker Compose all use 8001. Default changed to `8001`.
+
+43. **`mal_get_usage_stats` stale `days` parameter** (fixed) — The tool accepted a `days` parameter that was never used in the implementation. Removed the parameter. Added Collaboration Totals section (projects, sprints, work items, team members) to the report output. Applied in both on-premise and nube.
+
+44. **Nube `analytics.ts` missing auto-sync** (fixed) — `nube/src/tools/analytics.ts` was a stripped-down version that only ran `git log` and returned data, missing the auto-sync feature (team member matching, contribution logging, XP/level/streak updates) present in on-premise. Full rewrite to achieve parity: `matchTeamMember()`, `commitPoints()`, `execFileSync` with array args, shared `calculateLevel()` from `utils/levels.ts`.
+
+45. **Shared `calculateLevel()` utility** (enhancement) — Level calculation logic extracted from `gamification.ts` into `src/utils/levels.ts` in both on-premise and nube. Used by both `gamification.ts` (for `mal_log_contribution`) and `analytics.ts` (for auto-sync XP updates). Prevents formula drift between the two tools.
+
 ## Conventions
 
 - Strict TypeScript, no `any`
@@ -1216,10 +1242,12 @@ CREATE TABLE contributions (
     type TEXT NOT NULL                 -- commit | interaction | work_item | review | sprint | achievement
         CHECK(type IN ('commit','interaction','work_item','review','sprint','achievement')),
     reference_id TEXT,                 -- ID of related entity
-    points INTEGER DEFAULT 0,          -- XP awarded
+    points INTEGER NOT NULL DEFAULT 0, -- XP awarded
     description TEXT,                  -- human-readable
-    metadata TEXT DEFAULT '{}',        -- JSON: commit_sha, lines_changed, etc.
-    created_at TEXT DEFAULT (datetime('now'))
+    project_id TEXT,                   -- optional: links contribution to a project
+    metadata TEXT NOT NULL DEFAULT '{}', -- JSON: commit_sha, lines_changed, etc.
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Achievement definitions + user unlocks
@@ -1257,7 +1285,11 @@ CREATE INDEX idx_work_items_assignee ON work_items(assignee);
 CREATE INDEX idx_work_items_status ON work_items(status);
 CREATE INDEX idx_contributions_user ON contributions(user_id);
 CREATE INDEX idx_contributions_type ON contributions(type);
+CREATE INDEX idx_contributions_project ON contributions(project_id);
 CREATE INDEX idx_user_achievements_user ON user_achievements(user_id);
+CREATE INDEX idx_sprints_status ON sprints(status);
+CREATE INDEX idx_sprints_project ON sprints(project_id);
+CREATE INDEX idx_work_items_project ON work_items(project_id);
 ```
 
 FTS5 update — extend `catalog_fts` or create a second `interactions_fts`:
@@ -1608,6 +1640,24 @@ Phase 12: Chat-First Architecture           ┐ ✅ COMPLETE
        useChat pendingConfirmation state    │
   12.5 Project inline editing               │
        (EditProjectForm on ProjectsPage)    ┘
+         │
+Phase 13: Code Review & Hardening           ┐ ✅ COMPLETE
+  13.1 Security: execFileSync (analytics),  │ Full Stack
+       timingSafeEqual (on-premise auth),   │
+       async subprocess (_ensure_repo),     │
+       URL validation for git clone         │
+  13.2 Async correctness: all 4 LangGraph   │
+       agents converted to async def +     │
+       ainvoke()                            │
+  13.3 Data integrity: FTS auto-sync on     │
+       CRUD, search() total count fix,     │
+       MemorySaver message dedup           │
+  13.4 Parity: nube analytics.ts rewrite,   │
+       shared calculateLevel() utility,    │
+       meta.ts usage stats sync            │
+  13.5 UI fixes: autolinks regex,           │
+       remove hardcoded repo URL,          │
+       port default 8001, DnD key fix      ┘
 ```
 
 ### Phase 5.5 — Catalog Seeding (Skills, Commands, Subagents, External MCPs)

@@ -2,6 +2,9 @@ import Database from "better-sqlite3";
 import type { IDatabase } from "../database.js";
 import type { PaginatedResult, QueryOptions } from "../../types.js";
 
+/** Collections that have entries in the catalog_fts table. */
+const FTS_COLLECTIONS = new Set(["skills", "commands", "subagents", "mcps"]);
+
 export class SQLiteAdapter implements IDatabase {
   private db: Database.Database;
 
@@ -82,6 +85,18 @@ export class SQLiteAdapter implements IDatabase {
       obj.id = result.lastInsertRowid;
     }
 
+    // Auto-sync FTS index for catalog collections
+    const recordId = String(obj.id ?? id);
+    if (FTS_COLLECTIONS.has(collection) && recordId) {
+      this.syncFtsIndex(
+        collection,
+        recordId,
+        String(obj.name ?? ""),
+        String(obj.description ?? ""),
+        Array.isArray(obj.tags) ? obj.tags as string[] : [],
+      );
+    }
+
     return this.deserializeRow<T>(obj);
   }
 
@@ -98,17 +113,49 @@ export class SQLiteAdapter implements IDatabase {
 
     const result = await this.get<T>(collection, id);
     if (!result) throw new Error(`Record ${id} not found after update`);
+
+    // Auto-sync FTS index for catalog collections
+    if (FTS_COLLECTIONS.has(collection)) {
+      const record = result as Record<string, unknown>;
+      this.syncFtsIndex(
+        collection,
+        id,
+        String(record.name ?? ""),
+        String(record.description ?? ""),
+        Array.isArray(record.tags) ? record.tags as string[] : [],
+      );
+    }
+
     return result;
   }
 
   async delete(collection: string, id: string): Promise<void> {
     const stmt = this.db.prepare(`DELETE FROM "${collection}" WHERE id = ?`);
     stmt.run(id);
+
+    // Remove from FTS index for catalog collections
+    if (FTS_COLLECTIONS.has(collection)) {
+      const deleteStmt = this.db.prepare(
+        `DELETE FROM catalog_fts WHERE id = ? AND collection = ?`
+      );
+      deleteStmt.run(id, collection);
+    }
   }
 
   async search<T>(collection: string, query: string, options?: QueryOptions): Promise<PaginatedResult<T>> {
     const limit = Math.min(options?.limit ?? 20, 100);
     const offset = options?.offset ?? 0;
+
+    // Get total count for the search query
+    const countStmt = this.db.prepare(
+      `SELECT COUNT(*) as total FROM catalog_fts WHERE catalog_fts MATCH ? AND collection = ?`
+    );
+    const countRow = countStmt.get(query, collection) as { total: number };
+    const total = countRow.total;
+
+    if (total === 0) {
+      return { items: [], total: 0, has_more: false };
+    }
 
     const ftsStmt = this.db.prepare(
       `SELECT id FROM catalog_fts WHERE catalog_fts MATCH ? AND collection = ? LIMIT ? OFFSET ?`
@@ -117,7 +164,7 @@ export class SQLiteAdapter implements IDatabase {
 
     const ids = ftsRows.map((r) => r.id);
     if (ids.length === 0) {
-      return { items: [], total: 0, has_more: false };
+      return { items: [], total, has_more: total > offset };
     }
 
     const placeholders = ids.map(() => "?").join(",");
@@ -128,8 +175,9 @@ export class SQLiteAdapter implements IDatabase {
 
     return {
       items: rows.map((r) => this.deserializeRow<T>(r)),
-      total: rows.length,
-      has_more: false,
+      total,
+      has_more: total > offset + rows.length,
+      next_offset: total > offset + rows.length ? offset + rows.length : undefined,
     };
   }
 
