@@ -172,7 +172,7 @@ const mcps = [
 ];
 
 // ============================================================
-// 2. SKILLS (14) with SKILL.md content
+// 2. SKILLS (22) with SKILL.md content
 // ============================================================
 
 const skills = [
@@ -1381,6 +1381,407 @@ Format: \`<type>: <description>\`
 2. Fix and test
 3. Merge to \`main\` + \`dev\`
 4. Tag patch version
+`,
+  },
+
+  // --- NEW: community-adapted skills (8) ---
+  {
+    id: "test-driven-development",
+    name: "Test-Driven Development (TDD)",
+    description:
+      "Write the test first, watch it fail, write minimal code to pass. Red-Green-Refactor cycle with MAL-specific vitest and pytest patterns.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "tdd",
+      "test driven",
+      "test first",
+      "red green refactor",
+    ]),
+    asset_path: "skills/test-driven-development/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from obra/superpowers)",
+    tags: JSON.stringify(["tdd", "testing", "vitest", "pytest", "quality"]),
+    skill_md: `# Test-Driven Development (TDD)
+
+Write the test first. Watch it fail. Write minimal code to pass.
+
+**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
+
+Adapted from [obra/superpowers](https://github.com/obra/superpowers).
+
+## When to Use
+
+- New features
+- Bug fixes
+- Refactoring
+- Behavior changes
+
+**Exceptions:** Throwaway prototypes, generated code, configuration files.
+
+## The Iron Law
+
+NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
+
+Write code before the test? Delete it. Start over. No exceptions.
+
+## Red-Green-Refactor
+
+### RED — Write Failing Test
+
+Write one minimal test showing what should happen. Requirements: one behavior per test, clear descriptive name, real code (no mocks unless unavoidable).
+
+### Verify RED — Watch It Fail
+
+MANDATORY. Never skip. Run tests and confirm: test fails (not errors), failure message is expected, fails because feature is missing.
+
+### GREEN — Minimal Code
+
+Write simplest code to pass the test. Don't add features beyond what the test requires.
+
+### Verify GREEN — Watch It Pass
+
+Confirm: test passes, other tests still pass, output pristine.
+
+### REFACTOR — Clean Up
+
+After green only: remove duplication, improve names, extract helpers. Keep tests green.
+
+## Verification Checklist
+
+- [ ] Every new function/method has a test
+- [ ] Watched each test fail before implementing
+- [ ] Wrote minimal code to pass each test
+- [ ] All tests pass with pristine output
+- [ ] Edge cases and errors covered
+`,
+  },
+  {
+    id: "prompt-engineering",
+    name: "Prompt Engineering Patterns",
+    description:
+      "Advanced prompt engineering: few-shot learning, chain-of-thought, template systems, system prompt design, agent prompting best practices.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "prompt engineering",
+      "few shot",
+      "chain of thought",
+      "system prompt",
+      "agent prompt",
+    ]),
+    asset_path: "skills/prompt-engineering/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from NeoLabHQ/context-engineering-kit)",
+    tags: JSON.stringify(["prompts", "llm", "few-shot", "chain-of-thought", "agents"]),
+    skill_md: `# Prompt Engineering Patterns
+
+Advanced prompt engineering techniques to maximize LLM performance, reliability, and controllability.
+
+## Core Techniques
+
+### 1. Few-Shot Learning
+Teach the model by showing examples instead of explaining rules. Include 2-5 input-output pairs.
+
+### 2. Chain-of-Thought Prompting
+Request step-by-step reasoning before the final answer. Improves accuracy on analytical tasks by 30-50%.
+
+### 3. Prompt Optimization
+Iterate systematically: start simple, measure, refine.
+
+### 4. Template Systems
+Build reusable prompt structures with variables.
+
+### 5. System Prompt Design
+Set global behavior that persists across the conversation: role, expertise, output format, safety guidelines.
+
+## Instruction Hierarchy
+
+[System Context] → [Task Instruction] → [Examples] → [Input Data] → [Output Format]
+
+## Best Practices
+
+1. Be Specific: Vague prompts produce inconsistent results
+2. Show, Don't Tell: Examples are more effective than descriptions
+3. Test Extensively: Evaluate on diverse inputs
+4. Iterate Rapidly: Small changes can have large impacts
+5. Version Control: Treat prompts as code
+
+## Persuasion Principles for Agent Prompts
+
+Based on Meincke et al. (2025): Authority (imperative language), Commitment (require announcements), Scarcity (time-bound requirements), Social Proof (universal patterns), Unity (collaborative language).
+
+See full SKILL.md for detailed examples, MAL-specific patterns, and token efficiency tips.
+`,
+  },
+  {
+    id: "software-architecture",
+    name: "Software Architecture",
+    description:
+      "Quality-focused architecture guidance: Clean Architecture, DDD, early return pattern, library-first approach, anti-patterns to avoid. MAL adapter pattern examples.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "architecture",
+      "clean architecture",
+      "domain driven design",
+      "ddd",
+      "design patterns",
+    ]),
+    asset_path: "skills/software-architecture/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from NeoLabHQ/context-engineering-kit)",
+    tags: JSON.stringify(["architecture", "ddd", "clean-architecture", "design-patterns"]),
+    skill_md: `# Software Architecture
+
+Quality-focused software architecture guidance based on Clean Architecture and Domain-Driven Design principles.
+
+## Code Style Rules
+
+- Early return pattern: Always use early returns over nested conditions
+- Avoid code duplication through reusable functions and modules
+- Decompose long functions (>80 lines); split files >200 lines
+- Use arrow functions when possible
+
+## Library-First Approach
+
+ALWAYS search for existing solutions before writing custom code. Custom code is justified for domain-specific logic, performance-critical paths, or security-sensitive code.
+
+## Architecture and Design
+
+- Follow domain-driven design and ubiquitous language
+- Separate domain entities from infrastructure concerns
+- Keep business logic independent of frameworks
+- AVOID generic names: utils, helpers, common, shared
+- USE domain-specific names: OrderCalculator, UserAuthenticator
+
+## Anti-Patterns to Avoid
+
+- NIH Syndrome: Don't build what already exists
+- Mixing business logic with UI components
+- Database queries in controllers
+- Generic naming (utils.js with 50 functions)
+
+See full SKILL.md for MAL adapter pattern examples and file organization conventions.
+`,
+  },
+  {
+    id: "changelog-generator",
+    name: "Changelog Generator",
+    description:
+      "Generate structured changelogs from git history. Categorize by conventional commits, produce user-friendly release notes with MAL sprint integration.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "changelog",
+      "release notes",
+      "what changed",
+      "version history",
+    ]),
+    asset_path: "skills/changelog-generator/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team",
+    tags: JSON.stringify(["changelog", "git", "release-notes", "documentation"]),
+    skill_md: `# Changelog Generator
+
+Generate structured changelogs from git commit history. Analyzes commits, categorizes changes, and produces user-friendly release notes.
+
+## Process
+
+1. Gather commits: git log between two refs (tags, dates, branches)
+2. Categorize: Parse conventional commit prefixes (feat, fix, docs, infra, refactor, test)
+3. Format: Group by category, include metrics (commit count, contributors)
+
+## Conventional Commit Mapping
+
+| Prefix | Category |
+|--------|----------|
+| feat: | New Features |
+| fix: | Bug Fixes |
+| docs: | Documentation |
+| infra: | Infrastructure |
+| refactor: | Code Improvements |
+| test: | Tests |
+
+## MAL Integration
+
+Use mal_get_commit_activity for structured data, combine with mal_get_sprint and mal_list_work_items for sprint-based changelogs.
+
+See full SKILL.md for automation script and best practices.
+`,
+  },
+  {
+    id: "subagent-driven-development",
+    name: "Subagent-Driven Development",
+    description:
+      "Execute plans by dispatching fresh subagents per task with code review between tasks. Sequential and parallel execution modes for complex multi-step work.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "subagent",
+      "parallel agents",
+      "dispatch agent",
+      "multi-agent execution",
+    ]),
+    asset_path: "skills/subagent-driven-development/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from obra/superpowers)",
+    tags: JSON.stringify(["subagents", "parallel", "execution", "code-review", "agents"]),
+    skill_md: `# Subagent-Driven Development
+
+Create and execute plans by dispatching fresh subagents per task, with code review between tasks.
+
+**Core principle:** Fresh subagent per task + review between tasks = high quality, fast iteration.
+
+## Execution Modes
+
+### Sequential Execution
+For tightly coupled tasks: dispatch one agent per task, review after each, proceed to next.
+
+### Parallel Execution
+For independent tasks: dispatch multiple agents concurrently, review all results together.
+
+### Parallel Investigation
+For unrelated failures: group by domain, dispatch one agent per domain, integrate fixes.
+
+## Agent Prompt Structure
+
+Good prompts are: Focused (one domain), Self-contained (all context), Specific about output (what to return).
+
+## When NOT to Use
+
+- Related failures (fixing one might fix others)
+- Need full context (requires seeing entire system)
+- Shared state (agents would edit same files)
+- Exploratory debugging (don't know what's broken yet)
+
+See full SKILL.md for MAL integration examples and common mistakes.
+`,
+  },
+  {
+    id: "root-cause-tracing",
+    name: "Root Cause Tracing",
+    description:
+      "Systematically trace bugs backward through the call stack to find the original trigger. Add instrumentation when needed. Fix at source with defense in depth.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "root cause",
+      "trace bug",
+      "debug deep",
+      "call stack",
+      "why does this fail",
+    ]),
+    asset_path: "skills/root-cause-tracing/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from NeoLabHQ/context-engineering-kit)",
+    tags: JSON.stringify(["debugging", "root-cause", "tracing", "troubleshooting"]),
+    skill_md: `# Root Cause Tracing
+
+Systematically trace bugs backward through the call stack to find the original trigger.
+
+**Core principle:** Trace backward through the call chain until you find the original trigger, then fix there.
+
+## The Tracing Process
+
+1. Observe the Symptom — What error appears?
+2. Find Immediate Cause — What code directly causes it?
+3. Ask: What Called This? — Trace one level up
+4. Keep Tracing Up — What value was wrong? Where did it come from?
+5. Find Original Trigger — The root cause
+6. Fix at Source + Defense in Depth — Fix and add validation layers
+
+## Key Rule
+
+NEVER fix just where the error appears. Trace back to find the original trigger.
+
+See full SKILL.md for real MAL examples (contributions table, user_achievements, command injection).
+`,
+  },
+  {
+    id: "kaizen",
+    name: "Kaizen: Continuous Improvement",
+    description:
+      "Apply continuous improvement mindset: small iterative improvements, error-proof designs (Poka-Yoke), follow established patterns, avoid over-engineering (YAGNI/JIT).",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "kaizen",
+      "continuous improvement",
+      "poka yoke",
+      "error proofing",
+      "yagni",
+    ]),
+    asset_path: "skills/kaizen/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from NeoLabHQ/context-engineering-kit)",
+    tags: JSON.stringify(["kaizen", "quality", "improvement", "poka-yoke", "yagni"]),
+    skill_md: `# Kaizen: Continuous Improvement
+
+Small improvements, continuously. Error-proof by design. Follow what works. Build only what's needed.
+
+## The Four Pillars
+
+### 1. Continuous Improvement (Kaizen)
+Small, frequent improvements compound into major gains. Iterative refinement: make it work, make it clear, make it robust.
+
+### 2. Poka-Yoke (Error Proofing)
+Design systems that prevent errors at compile/design time. Use types to constrain inputs, validate at boundaries, fail at startup not in production.
+
+### 3. Standardized Work
+Follow established patterns. Consistency over cleverness. Check CLAUDE.md for project conventions.
+
+### 4. Just-In-Time (JIT)
+Build what's needed now. YAGNI: no "just in case" features. Abstract only when pattern proven across 3+ cases.
+
+## Mindset
+
+Good enough today, better tomorrow. Repeat.
+
+See full SKILL.md for TypeScript examples, MAL conventions, and red flags.
+`,
+  },
+  {
+    id: "brainstorming",
+    name: "Brainstorming Ideas Into Designs",
+    description:
+      "Turn ideas into fully formed designs through collaborative dialogue. Understand context, explore approaches, present validated designs incrementally.",
+    version: "1.0.0",
+    category: "custom",
+    trigger_patterns: JSON.stringify([
+      "brainstorm",
+      "design session",
+      "explore idea",
+      "feature planning",
+    ]),
+    asset_path: "skills/brainstorming/SKILL.md",
+    dependencies: JSON.stringify([]),
+    author: "MAL Team (adapted from obra/superpowers)",
+    tags: JSON.stringify(["brainstorming", "design", "planning", "ideation"]),
+    skill_md: `# Brainstorming Ideas Into Designs
+
+Turn ideas into fully formed designs and specs through collaborative dialogue.
+
+## The Process
+
+1. Understanding: Check project state, ask questions one at a time, prefer multiple choice
+2. Exploring: Propose 2-3 approaches with trade-offs, lead with recommendation
+3. Presenting: Break design into 200-300 word sections, validate each
+4. Documenting: Write design doc, commit to git
+
+## Key Principles
+
+- One question at a time
+- Multiple choice preferred
+- YAGNI ruthlessly
+- Explore alternatives (always 2-3 approaches)
+- Incremental validation
+
+## MAL Integration
+
+Use MCP tools for context: mal_list_work_items (backlog), mal_get_sprint (current goal), mal_search_interactions (past discussions). Convert designs to work items via mal_create_work_item.
+
+See full SKILL.md for design document format and MCP tool design example.
 `,
   },
 ];

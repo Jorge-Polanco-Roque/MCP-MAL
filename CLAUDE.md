@@ -58,7 +58,7 @@ v001/
 │   ├── data/
 │   │   ├── schema.sql            ← SQLite DDL (14 tables + FTS5)
 │   │   └── assets/               ← catalog content (tracked in git)
-│   │       ├── skills/           ← 14+ SKILL.md files
+│   │       ├── skills/           ← 22 SKILL.md files (14 original + 8 community-adapted)
 │   │       ├── commands/         ← 14 command .md files
 │   │       ├── mcps/             ← 6 MCP config .md files
 │   │       ├── subagents/        ← 5 subagent .md files
@@ -207,7 +207,7 @@ npm run start:http         # HTTP on localhost:3000
 npm test                   # vitest run  (10 tests, all passing)
 npm run lint               # eslint src/
 npm run seed               # Load initial catalog data (runs automatically in setup)
-npm run seed:full          # Full catalog seed (14 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements)
+npm run seed:full          # Full catalog seed (22 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements)
 npm run inspect            # MCP Inspector
 ```
 
@@ -1044,9 +1044,11 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 60. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements with poor contrast: `<select>` filter elements were invisible, form inputs had no dark background, status badges used light-only colors, dropdown menus stayed white, and text colors lacked dark counterparts. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and 1 component (WorkItemCard). Consistent patterns applied: form elements get `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500`, status badges get `dark:bg-{color}-900/40 dark:text-{color}-300`, containers get `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
 
-61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (14 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
+61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (22 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
 
 62. **Catalog assets exported to repo** (enhancement) — All catalog content previously embedded only in `seed-full-catalog.ts` (and the SQLite DB at runtime) is now exported as standalone markdown files in `on-premise/data/assets/`. This makes the full catalog browsable on GitHub without running the seed or the server. New directories: `commands/` (14 files), `mcps/` (6 files), `subagents/` (5 files), `achievements/` (1 README). The `skills/` directory (14+ SKILL.md files) was already on disk but git-ignored — now tracked. `.gitignore` updated in both root and `on-premise/` to track `data/assets/` while keeping `catalog.db` excluded. `npm run setup` still works — the seed overwrites files with identical content.
+
+63. **8 community-adapted skills added** (enhancement) — Added 8 new skills adapted from [obra/superpowers](https://github.com/obra/superpowers) and [NeoLabHQ/context-engineering-kit](https://github.com/NeoLabHQ/context-engineering-kit): `test-driven-development` (TDD Red-Green-Refactor with MAL vitest/pytest patterns), `prompt-engineering` (few-shot, chain-of-thought, template systems, agent prompting), `software-architecture` (Clean Architecture, DDD, library-first, MAL adapter patterns), `changelog-generator` (conventional commits categorization, sprint integration), `subagent-driven-development` (fresh subagent per task, sequential/parallel execution), `root-cause-tracing` (backward stack tracing with real MAL examples), `kaizen` (continuous improvement, Poka-Yoke, YAGNI/JIT), `brainstorming` (collaborative design sessions with MCP context). Each has a full SKILL.md in `on-premise/data/assets/skills/` and a seed entry in `seed-full-catalog.ts`. Total skills: 22 (14 original + 8 new).
 
 ## Conventions
 
@@ -1777,7 +1779,7 @@ These are real, production-ready MCP servers the team will use through the hub's
 }
 ```
 
-#### Skills to Seed (14)
+#### Skills to Seed (22)
 
 Each skill gets a full SKILL.md asset with real content (instructions, examples, patterns). No placeholders.
 
@@ -1880,11 +1882,11 @@ The seeding will be implemented as a script (`scripts/seed-full-catalog.ts` in o
 4. Registers all 14 commands via `mal_register_command` with working script_templates
 5. Registers all 5 subagents via `mal_register_subagent` with tuned system_prompts
 6. Seeds the 14 achievement definitions
-7. Reports: `✓ 6 MCPs, 14 skills, 14 commands, 5 subagents, 14 achievements seeded`
+7. Reports: `✓ 6 MCPs, 22 skills, 14 commands, 5 subagents, 14 achievements seeded`
 
 Run via: `npm run seed:full` (on-premise) or `npm run seed:full` (nube)
 
-**Catalog totals after seeding**: 6 MCPs + 14 skills + 14 commands + 5 subagents + 14 achievements = **53 catalog entries**
+**Catalog totals after seeding**: 6 MCPs + 22 skills + 14 commands + 5 subagents + 14 achievements = **61 catalog entries**
 
 ### New Dependencies
 
