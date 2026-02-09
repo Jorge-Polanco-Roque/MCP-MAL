@@ -17,9 +17,9 @@ dist/
 *.db-wal
 *.db-shm
 
-# Assets (generated/user content, not source code)
-on-premise/data/assets/
-!on-premise/data/assets/.gitkeep
+# Assets — tracked in git for browsability
+# (only .gitkeep is excluded from on-premise/.gitignore)
+on-premise/data/assets/.gitkeep
 
 # Terraform
 .terraform/

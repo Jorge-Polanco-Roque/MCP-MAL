@@ -57,7 +57,12 @@ v001/
 │   ├── tsconfig.json
 │   ├── data/
 │   │   ├── schema.sql            ← SQLite DDL (14 tables + FTS5)
-│   │   └── assets/               ← SKILL.md files
+│   │   └── assets/               ← catalog content (tracked in git)
+│   │       ├── skills/           ← 14+ SKILL.md files
+│   │       ├── commands/         ← 14 command .md files
+│   │       ├── mcps/             ← 6 MCP config .md files
+│   │       ├── subagents/        ← 5 subagent .md files
+│   │       └── achievements/     ← README.md with all 14 achievements
 │   ├── src/
 │   │   ├── index.ts              ← entry point (SQLite + Filesystem + Dotenv)
 │   │   ├── server.ts             ← registerAllTools hub
@@ -1040,6 +1045,8 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 60. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements with poor contrast: `<select>` filter elements were invisible, form inputs had no dark background, status badges used light-only colors, dropdown menus stayed white, and text colors lacked dark counterparts. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and 1 component (WorkItemCard). Consistent patterns applied: form elements get `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500`, status badges get `dark:bg-{color}-900/40 dark:text-{color}-300`, containers get `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
 
 61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (14 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
+
+62. **Catalog assets exported to repo** (enhancement) — All catalog content previously embedded only in `seed-full-catalog.ts` (and the SQLite DB at runtime) is now exported as standalone markdown files in `on-premise/data/assets/`. This makes the full catalog browsable on GitHub without running the seed or the server. New directories: `commands/` (14 files), `mcps/` (6 files), `subagents/` (5 files), `achievements/` (1 README). The `skills/` directory (14+ SKILL.md files) was already on disk but git-ignored — now tracked. `.gitignore` updated in both root and `on-premise/` to track `data/assets/` while keeping `catalog.db` excluded. `npm run setup` still works — the seed overwrites files with identical content.
 
 ## Conventions
 

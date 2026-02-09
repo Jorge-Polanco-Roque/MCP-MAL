@@ -4,7 +4,6 @@ dist/
 data/catalog.db
 data/catalog.db-wal
 data/catalog.db-shm
-data/assets/
-!data/assets/.gitkeep
+data/assets/.gitkeep
 *.log
 .DS_Store
