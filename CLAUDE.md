@@ -194,14 +194,15 @@ v001/
 ### on-premise/ (Local)
 
 ```bash
-npm run setup              # Init SQLite + folders + .env
+npm run setup              # Init SQLite + folders + .env + build + seed catalog (all-in-one)
 npm run build              # tsc
 npm run dev                # tsx watch mode
 npm run start:stdio        # stdio transport (Claude Code)
 npm run start:http         # HTTP on localhost:3000
 npm test                   # vitest run  (10 tests, all passing)
 npm run lint               # eslint src/
-npm run seed               # Load initial catalog data
+npm run seed               # Load initial catalog data (runs automatically in setup)
+npm run seed:full          # Full catalog seed (14 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements)
 npm run inspect            # MCP Inspector
 ```
 
@@ -1037,6 +1038,8 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 59. **Recharts `PieLabelRenderProps` type** (fixed) — The Pie chart `label` callback in `AnalyticsPage.tsx` must use `PieLabelRenderProps` type from recharts, with `name` and `value` as optional fields (use `name ?? ""` and `value ?? 0`).
 
 60. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements with poor contrast: `<select>` filter elements were invisible, form inputs had no dark background, status badges used light-only colors, dropdown menus stayed white, and text colors lacked dark counterparts. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and 1 component (WorkItemCard). Consistent patterns applied: form elements get `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500`, status badges get `dark:bg-{color}-900/40 dark:text-{color}-300`, containers get `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
+
+61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (14 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
 
 ## Conventions
 

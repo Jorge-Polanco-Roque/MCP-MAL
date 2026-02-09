@@ -32,6 +32,10 @@ fi
 # Build
 npm run build
 
+# Seed catalog (idempotent — skips existing entries)
+echo "Seeding catalog..."
+npx tsx scripts/seed-full-catalog.ts
+
 echo ""
 echo "Setup complete. Options to start:"
 echo ""
