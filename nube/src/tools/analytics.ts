@@ -407,4 +407,151 @@ export function registerAnalyticsTools(server: McpServer, db: IDatabase): void {
       }
     }
   );
+
+  // --- mal_run_retrospective ---
+  server.registerTool(
+    "mal_run_retrospective",
+    {
+      title: "Run Sprint Retrospective",
+      description: "Generate sprint retrospective data: what went well, what didn't, action items. Gathers completed vs missed items, velocity, team contributions, and blockers. The LLM narrates the retrospective from this structured data.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        sprint_id: z.string().describe("Sprint ID to generate retrospective for"),
+      },
+    },
+    async (args) => {
+      try {
+        const sprint = await db.get<Sprint>(COLLECTIONS.SPRINTS, args.sprint_id);
+        if (!sprint) {
+          return {
+            content: [{ type: "text" as const, text: `Error: Sprint '${args.sprint_id}' not found. Try: Use mal_list_sprints to see available sprints.` }],
+            isError: true,
+          };
+        }
+
+        const workItems = await db.list<WorkItem>(COLLECTIONS.WORK_ITEMS, {
+          filters: { sprint_id: args.sprint_id },
+          limit: 200,
+        });
+
+        const items = workItems.items;
+        const doneItems = items.filter(i => i.status === "done");
+        const cancelledItems = items.filter(i => i.status === "cancelled");
+        const incompleteItems = items.filter(i => i.status !== "done" && i.status !== "cancelled");
+
+        const totalPoints = items.reduce((s, i) => s + (i.story_points ?? 0), 0);
+        const donePoints = doneItems.reduce((s, i) => s + (i.story_points ?? 0), 0);
+        // Completion rate
+        const completionPct = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 0;
+
+        // Team contribution breakdown
+        const memberStats: Record<string, { done: number; incomplete: number; points: number }> = {};
+        for (const item of items) {
+          const a = item.assignee ?? "(unassigned)";
+          if (!memberStats[a]) memberStats[a] = { done: 0, incomplete: 0, points: 0 };
+          if (item.status === "done") {
+            memberStats[a].done++;
+            memberStats[a].points += item.story_points ?? 0;
+          } else if (item.status !== "cancelled") {
+            memberStats[a].incomplete++;
+          }
+        }
+
+        // Type distribution of completed vs not
+        const typeCompleted: Record<string, number> = {};
+        const typeIncomplete: Record<string, number> = {};
+        for (const item of doneItems) {
+          typeCompleted[item.type] = (typeCompleted[item.type] ?? 0) + 1;
+        }
+        for (const item of incompleteItems) {
+          typeIncomplete[item.type] = (typeIncomplete[item.type] ?? 0) + 1;
+        }
+
+        // Bugs completed vs carried over
+        const bugsCompleted = doneItems.filter(i => i.type === "bug").length;
+        const bugsOpen = incompleteItems.filter(i => i.type === "bug").length;
+
+        // Sprint duration
+        const startDate = new Date(sprint.start_date);
+        const endDate = new Date(sprint.end_date);
+        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000);
+
+        const mdLines: string[] = [
+          `## Sprint Retrospective: ${sprint.name}`,
+          "",
+          `**Goal**: ${sprint.goal ?? "(none set)"}`,
+          `**Dates**: ${sprint.start_date} → ${sprint.end_date} (${totalDays} days)`,
+          `**Status**: ${sprint.status}`,
+          "",
+          "### Summary Metrics",
+          "",
+          "| Metric | Value |",
+          "|--------|-------|",
+          `| Velocity (points completed) | **${donePoints}** / ${totalPoints} planned |`,
+          `| Completion rate | **${completionPct}%** |`,
+          `| Items completed | ${doneItems.length} / ${items.length} |`,
+          `| Items carried over | ${incompleteItems.length} |`,
+          `| Items cancelled | ${cancelledItems.length} |`,
+          `| Bugs fixed | ${bugsCompleted} |`,
+          `| Bugs carried over | ${bugsOpen} |`,
+          `| Capacity | ${sprint.team_capacity ?? "not set"} |`,
+        ];
+
+        // What went well: items completed
+        mdLines.push("");
+        mdLines.push("### Completed Items");
+        mdLines.push("");
+        if (doneItems.length === 0) {
+          mdLines.push("*No items completed.*");
+        } else {
+          for (const item of doneItems) {
+            const pts = item.story_points ? ` [${item.story_points}pts]` : "";
+            const who = item.assignee ? ` — ${item.assignee}` : "";
+            mdLines.push(`- **${item.id}** [${item.type}] ${item.title}${pts}${who}`);
+          }
+        }
+
+        // What didn't go well: incomplete items
+        mdLines.push("");
+        mdLines.push("### Incomplete / Carried Over");
+        mdLines.push("");
+        if (incompleteItems.length === 0) {
+          mdLines.push("*All items completed!*");
+        } else {
+          for (const item of incompleteItems) {
+            const pts = item.story_points ? ` [${item.story_points}pts]` : "";
+            const who = item.assignee ? ` — ${item.assignee}` : "";
+            mdLines.push(`- **${item.id}** [${item.type}/${item.status}] ${item.title}${pts}${who}`);
+          }
+        }
+
+        // Team contribution
+        if (Object.keys(memberStats).length > 0) {
+          mdLines.push("");
+          mdLines.push("### Team Contributions");
+          mdLines.push("");
+          mdLines.push("| Member | Done | Incomplete | Points |");
+          mdLines.push("|--------|------|-----------|--------|");
+          for (const [member, stats] of Object.entries(memberStats)) {
+            mdLines.push(`| ${member} | ${stats.done} | ${stats.incomplete} | ${stats.points} |`);
+          }
+        }
+
+        // Type breakdown
+        mdLines.push("");
+        mdLines.push("### Type Distribution");
+        mdLines.push("");
+        mdLines.push("| Type | Done | Incomplete |");
+        mdLines.push("|------|------|-----------|");
+        const allTypes = new Set([...Object.keys(typeCompleted), ...Object.keys(typeIncomplete)]);
+        for (const t of allTypes) {
+          mdLines.push(`| ${t} | ${typeCompleted[t] ?? 0} | ${typeIncomplete[t] ?? 0} |`);
+        }
+
+        return { content: [{ type: "text" as const, text: mdLines.join("\n") }] };
+      } catch (error) {
+        return handleToolError(error, "mal_run_retrospective");
+      }
+    }
+  );
 }

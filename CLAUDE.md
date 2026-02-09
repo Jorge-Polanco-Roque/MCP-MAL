@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MCP follows a **client-server architecture**, similar to how a browser connects to a web server:
 
-- **MCP Server** (this project) — Runs on a machine (local or remote). Holds the database, skills, commands, and exposes 47 tools via the MCP protocol (JSON-RPC over HTTP or stdio).
+- **MCP Server** (this project) — Runs on a machine (local or remote). Holds the database, skills, commands, and exposes 51 tools via the MCP protocol (JSON-RPC over HTTP or stdio).
 - **MCP Client** (Claude Code, front/, or any LLM tool) — Runs on the developer's machine. Connects to the MCP server to discover and call tools. The LLM (Anthropic, OpenAI) decides which tools to call based on the user's request.
 
 ```
@@ -19,7 +19,7 @@ Developer's machine                          Server (local or remote)
 │  Claude Code         │  JSON-RPC (HTTP)    │  mal-mcp-hub                 │
 │  (MCP Client)        │ ◄─────────────────► │  (MCP Server)                │
 │                      │  or stdio (local)   │                              │
-│  LLM calls ──► Anthropic API              │  47 tools · DB · Skills      │
+│  LLM calls ──► Anthropic API              │  51 tools · DB · Skills      │
 └──────────────────────┘                     └──────────────────────────────┘
 ```
 
@@ -63,7 +63,7 @@ v001/
 │   │   ├── server.ts             ← registerAllTools hub
 │   │   ├── constants.ts          ← SERVER_NAME, COLLECTIONS, enums
 │   │   ├── types.ts              ← SkillEntry, CommandEntry, SubagentConfig, MCPRegistryEntry
-│   │   ├── tools/                ← 47 MCP tools (13 files)
+│   │   ├── tools/                ← 51 MCP tools (14 files)
 │   │   │   ├── registry.ts       ← 7 tools: skill CRUD + MCP list/register
 │   │   │   ├── skills.ts         ← 2 tools: search_skills, get_skill_content
 │   │   │   ├── commands.ts       ← 4 tools: list/get/register/execute commands
@@ -72,18 +72,20 @@ v001/
 │   │   │   ├── meta.ts           ← 4 tools: search/export/import catalog, usage_stats
 │   │   │   ├── interactions.ts   ← 4 tools: log/list/get/search interactions
 │   │   │   ├── sprints.ts        ← 4 tools: create/list/get/update sprints
-│   │   │   ├── work-items.ts     ← 4 tools: create/list/get/update work items
+│   │   │   ├── work-items.ts     ← 5 tools: CRUD + bulk_update_work_items
 │   │   │   ├── team.ts           ← 3 tools: register/get/list team members
 │   │   │   ├── gamification.ts   ← 3 tools: leaderboard, achievements, contributions
-│   │   │   ├── analytics.ts      ← 2 tools: commit activity (auto-sync), sprint report
-│   │   │   └── projects.ts       ← 5 tools: create/list/get/update/delete projects
+│   │   │   ├── analytics.ts      ← 3 tools: commit activity, sprint report, retrospective
+│   │   │   ├── projects.ts       ← 5 tools: create/list/get/update/delete projects
+│   │   │   └── audit.ts          ← 2 tools: audit log, tool usage stats
 │   │   ├── schemas/              ← Zod schemas (.strict())
 │   │   ├── utils/
 │   │   │   ├── error-handler.ts
 │   │   │   ├── formatter.ts
 │   │   │   ├── logger.ts         ← pino (stderr)
 │   │   │   ├── pagination.ts
-│   │   │   └── levels.ts         ← shared calculateLevel() utility
+│   │   │   ├── levels.ts         ← shared calculateLevel() utility
+│   │   │   └── audit.ts          ← withAudit() HOF wrapper + logToolUsage()
 │   │   ├── services/
 │   │   │   ├── database.ts       ← IDatabase interface
 │   │   │   ├── storage.ts        ← IStorage interface
@@ -112,7 +114,7 @@ v001/
     ├── src/
     │   ├── index.ts               ← entry point + graceful shutdown (SIGTERM/SIGINT)
     │   ├── server.ts              ← same as on-premise
-    │   ├── tools/                 ← same 13 files as on-premise (including auto-sync analytics)
+    │   ├── tools/                 ← same 14 files as on-premise (including audit + analytics)
     │   ├── schemas/               ← same as on-premise
     │   ├── services/
     │   │   ├── database.ts        ← IDatabase interface
@@ -159,9 +161,12 @@ v001/
     │   ├── requirements.txt
     │   ├── Dockerfile
     │   └── app/
-    │       ├── main.py            ← FastAPI + lifespan
+    │       ├── main.py            ← FastAPI + lifespan (7 agents)
     │       ├── config.py          ← pydantic-settings
-    │       ├── agent/             ← LangGraph graph + prompts
+    │       ├── agent/             ← LangGraph agents (7 total)
+    │       │   ├── graph.py       ← Chat agent (AsyncSqliteSaver)
+    │       │   ├── code_reviewer.py  ← Code Review agent
+    │       │   └── daily_summary.py  ← Daily Summary agent
     │       ├── mcp/               ← MultiServerMCPClient
     │       ├── api/               ← WebSocket chat + REST dashboard
     │       └── models/            ← Pydantic schemas
@@ -172,14 +177,14 @@ v001/
         └── src/
             ├── App.tsx            ← React Router with 10 routes under Layout
             ├── components/
-            │   ├── board/         ← WorkItemCard (draggable) + BoardColumn (droppable)
+            │   ├── board/         ← WorkItemCard, BoardColumn, BoardFilters, DependencyTree
             │   ├── chat/          ← ChatPanel, MessageBubble, ToolCallCard, ConfirmationCard
-            │   ├── dashboard/     ← DashboardPanel, ActivityFeed, CatalogList
+            │   ├── dashboard/     ← DashboardPanel, ActivityFeed, CatalogList, ActivityTimeline
             │   ├── gamification/  ← XpBar, LevelBadge, AchievementCard, StreakIndicator
             │   ├── intelligence/  ← TeamPulse, SprintHealthBadge
-            │   ├── layout/        ← Layout, Sidebar
+            │   ├── layout/        ← Layout, Sidebar, CommandPalette, NotificationBell
             │   └── ui/            ← button, card, badge, tabs, scroll-area, etc.
-            ├── hooks/             ← useChat, useWebSocket, useCatalog, useData
+            ├── hooks/             ← useChat, useWebSocket, useCatalog, useData, useTheme
             ├── pages/             ← 10 pages: Chat, Sprints, Backlog, Analytics, etc.
             └── lib/               ← types, api, utils, gamification, autolink
 ```
@@ -271,7 +276,7 @@ Multiple MCP clients connect to a single shared MCP server. The server can run l
 │  │ mcp-proxy  │ │ meta     │ │ team     │ │ sprints/items    │  │
 │  │ (2 tools)  │ │ (4 tools)│ │ (4 tools)│ │ (8 tools)        │  │
 │  ├────────────┤ ├──────────┤ ├──────────┤ ├──────────────────┤  │
-│  │gamification│ │analytics │ │ interact │ │   47 tools total │  │
+│  │gamification│ │analytics │ │ interact │ │   51 tools total │  │
 │  │ (3 tools)  │ │ (2 tools)│ │ (3 tools)│ │                  │  │
 │  └────────────┘ └──────────┘ └──────────┘ └──────────────────┘  │
 │                                                                  │
@@ -392,7 +397,7 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
     │       ..." }] }          │                              │
 ```
 
-## Complete Tool Map (47 tools)
+## Complete Tool Map (51 tools)
 
 ### Catalog Tools (22 tools — original)
 
@@ -448,7 +453,7 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
 | `mal_import_catalog` | Import catalog from JSON (merge) | `destructiveHint: true` |
 | `mal_get_usage_stats` | Catalog totals and usage stats | `readOnlyHint: true` |
 
-### Team Collaboration Tools (25 tools — Phase 5+)
+### Team Collaboration Tools (29 tools — Phase 5+)
 
 #### interactions.ts (4 tools)
 
@@ -468,7 +473,7 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
 | `mal_get_sprint` | Get sprint detail + work items | `readOnlyHint: true` |
 | `mal_update_sprint` | Update sprint status/goal/retrospective | `destructiveHint: false` |
 
-#### work-items.ts (4 tools)
+#### work-items.ts (5 tools)
 
 | Tool | Action | Annotations |
 |------|--------|-------------|
@@ -476,6 +481,7 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
 | `mal_list_work_items` | List/filter work items (supports `format: "json"`) | `readOnlyHint: true` |
 | `mal_get_work_item` | Get work item detail | `readOnlyHint: true` |
 | `mal_update_work_item` | Update status, assignee, points | `destructiveHint: false` |
+| `mal_bulk_update_work_items` | Batch update up to 50 items | `destructiveHint: false` |
 
 #### team.ts (3 tools)
 
@@ -493,12 +499,13 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
 | `mal_get_achievements` | List achievements + user's unlocked | `readOnlyHint: true` |
 | `mal_log_contribution` | Record contribution + award XP | `destructiveHint: false` |
 
-#### analytics.ts (2 tools)
+#### analytics.ts (3 tools)
 
 | Tool | Action | Annotations |
 |------|--------|-------------|
 | `mal_get_commit_activity` | Git commit data + auto-sync to leaderboard | writes contributions |
 | `mal_get_sprint_report` | Sprint analytics (velocity, burndown, health) | `readOnlyHint: true` |
+| `mal_run_retrospective` | Generate sprint retrospective data | `readOnlyHint: true` |
 
 #### projects.ts (5 tools)
 
@@ -509,6 +516,13 @@ Claude Code                mal-mcp-hub               SQLiteAdapter / Firestore
 | `mal_get_project` | Get project detail + related sprints | `readOnlyHint: true` |
 | `mal_update_project` | Update name, status, metadata | `destructiveHint: false` |
 | `mal_delete_project` | Delete project (optional cascade) | `destructiveHint: true` |
+
+#### audit.ts (2 tools)
+
+| Tool | Action | Annotations |
+|------|--------|-------------|
+| `mal_get_audit_log` | Query tool usage history with filters | `readOnlyHint: true` |
+| `mal_get_tool_usage_stats` | Aggregated tool usage statistics | `readOnlyHint: true` |
 
 ## Data Model
 
@@ -571,7 +585,7 @@ Same collections, but:
 
 ## Tool Registration Pattern
 
-All 47 tools use `server.registerTool()` (not the deprecated `server.tool()`) with config objects:
+All 51 tools use `server.registerTool()` (not the deprecated `server.tool()`) with config objects:
 
 ```typescript
 server.registerTool("mal_tool_name", {
@@ -792,7 +806,7 @@ Deploy nube/ via Terraform or Cloud Build:
 | **Config in Claude Code** | `type: "stdio"` + command | `type: "http"` + URL + API key |
 | **Protocol** | JSON-RPC over stdio | JSON-RPC over Streamable HTTP |
 
-The 47 MCP tools, the protocol, and all functionality are identical regardless of which option you choose.
+The 51 MCP tools, the protocol, and all functionality are identical regardless of which option you choose.
 
 ## Manual Testing (HTTP mode with curl)
 
@@ -994,6 +1008,36 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 45. **Shared `calculateLevel()` utility** (enhancement) — Level calculation logic extracted from `gamification.ts` into `src/utils/levels.ts` in both on-premise and nube. Used by both `gamification.ts` (for `mal_log_contribution`) and `analytics.ts` (for auto-sync XP updates). Prevents formula drift between the two tools.
 
+46. **Audit logging with `withAudit()` HOF** (enhancement) — New `src/utils/audit.ts` provides a higher-order function `withAudit(handler, db)` that wraps tool handlers to auto-log every invocation to the `usage_log` table with timing, success/failure, and resource_id extraction. Two new query tools (`mal_get_audit_log`, `mal_get_tool_usage_stats`) in `src/tools/audit.ts` expose the data. Applied in both on-premise and nube.
+
+47. **Bulk work item updates** (enhancement) — `mal_bulk_update_work_items` in `work-items.ts` batch-updates up to 50 items in a single call. Supports updating status, priority, sprint_id, assignee, and labels. Auto-sets `completed_at` when status transitions to `done`. Returns per-item success/failure breakdown.
+
+48. **Sprint retrospective tool** (enhancement) — `mal_run_retrospective` in `analytics.ts` gathers sprint data (work items, velocity, interactions, contributions) and formats a structured retrospective with "What went well", "What could improve", and "Action items" sections for the LLM to narrate.
+
+49. **Persistent chat memory with AsyncSqliteSaver** (enhancement) — Replaced `MemorySaver` (lost on restart) with `langgraph-checkpoint-sqlite` `AsyncSqliteSaver` in `front/backend/app/agent/graph.py`. Chat history persists across server restarts via SQLite file at `./data/chat_memory.db`. Frontend sends a persistent `thread_id` from localStorage. Added `langgraph-checkpoint-sqlite>=2.0.0` and `aiosqlite>=0.20.0` to requirements.
+
+50. **Code Review agent (6th)** (enhancement) — New `front/backend/app/agent/code_reviewer.py` LangGraph agent for structured code review. Uses 4 MCP tools (`mal_search_catalog`, `mal_get_skill_content`, `mal_list_skills`, `mal_get_audit_log`). WebSocket endpoint: `/ws/code-review`.
+
+51. **Daily Summary agent (7th)** (enhancement) — New `front/backend/app/agent/daily_summary.py` LangGraph agent for daily/weekly team digests. Uses 6 MCP tools (`mal_get_commit_activity`, `mal_list_work_items`, `mal_list_interactions`, `mal_get_sprint_report`, `mal_get_leaderboard`, `mal_list_sprints`). WebSocket endpoint: `/ws/daily-summary`.
+
+52. **Dark mode with class strategy** (enhancement) — `tailwind.config.ts` uses `darkMode: "class"`. `useTheme` hook in `front/frontend/src/hooks/useTheme.ts` supports `light`/`dark`/`system` modes with localStorage persistence. All components updated with `dark:` Tailwind variants. Theme toggle (Sun/Moon) in header.
+
+53. **Multiple Recharts visualizations** (enhancement) — `AnalyticsPage.tsx` rewritten with `AreaChart` (commit activity with gradient fill), horizontal `BarChart` (team contributions by author), and `PieChart` (sprint status distribution). Parsers: `parseAuthorChart()`, `parseSprintStatus()`.
+
+54. **Enhanced Kanban board** (enhancement) — `BoardColumn.tsx` shows WIP limit indicators (`in_progress: 5`, `review: 3`). Over-WIP columns get red border. `WorkItemCard.tsx` has priority color left border (red=critical, orange=high, blue=medium, gray=low). New `BoardFilters.tsx` component with assignee/priority/type filters.
+
+55. **Command Palette (Cmd+K)** (enhancement) — `CommandPalette.tsx` provides global keyboard navigation. `Cmd+K` / `Ctrl+K` opens modal with search + arrow key navigation. 10 routes with keywords for fuzzy matching.
+
+56. **Notification bell** (enhancement) — `NotificationBell.tsx` polls `/api/activity?limit=5` every 60s. Shows unread count badge, notification dropdown, and "Mark all read" action.
+
+57. **Activity timeline** (enhancement) — `ActivityTimeline.tsx` renders a vertical timeline with typed icons (interaction, commit, work_item, achievement, contribution). Includes `parseActivityEntries()` helper for API data normalization.
+
+58. **Dependency tree** (enhancement) — `DependencyTree.tsx` visualizes work item parent-child hierarchy. Groups by `parent_id`, shows epics at top level with nested children. Status dot indicators and story point display. `parent_id` added to `BoardItem` type.
+
+59. **Recharts `PieLabelRenderProps` type** (fixed) — The Pie chart `label` callback in `AnalyticsPage.tsx` must use `PieLabelRenderProps` type from recharts, with `name` and `value` as optional fields (use `name ?? ""` and `value ?? 0`).
+
+60. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements with poor contrast: `<select>` filter elements were invisible, form inputs had no dark background, status badges used light-only colors, dropdown menus stayed white, and text colors lacked dark counterparts. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and 1 component (WorkItemCard). Consistent patterns applied: form elements get `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500`, status badges get `dark:bg-{color}-900/40 dark:text-{color}-300`, containers get `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
+
 ## Conventions
 
 - Strict TypeScript, no `any`
@@ -1028,7 +1072,7 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 - WebSocket: `useChat` hook manages streaming state machine (token/tool_call/tool_result/done)
 - REST: React Query with 30s stale time, auto-refetch for health (30s) and stats (60s)
 - MCP client: `MultiServerMCPClient` with `streamable_http` transport, no context manager
-- Agent: LangGraph `StateGraph` with 2 nodes (`call_model` + `guarded_tools`), conditional edges, `MemorySaver` checkpointer for interrupt/resume
+- Agent: LangGraph `StateGraph` with 2 nodes (`call_model` + `guarded_tools`), conditional edges, `AsyncSqliteSaver` checkpointer for persistent memory + interrupt/resume
 - Streaming: `agent.astream_events(version="v2")` for real-time token + tool call delivery
 - Internal LangGraph keys (`runtime`, `config`, `callbacks`, `store`, `context`) must be filtered from `on_tool_start` events before JSON serialization
 - Graph nodes must be `async def` — MCP adapter tools are async-only (`StructuredTool`), use `ainvoke()` not `invoke()`
@@ -1047,14 +1091,14 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
   - `commands.test.ts` — 2 tests (create/retrieve, list with filters)
   - `http.test.ts` — 2 tests (server startup, graceful shutdown)
   - `registry.test.ts` — 1 test (tool registration)
-- **front/backend**: 18/18 tests passing (pytest)
-  - `test_agent.py` — 6 tests (graph compilation, system prompt 47 tools, capabilities section, destructive ops section, DESTRUCTIVE_TOOLS constant)
-  - `test_agents.py` — 11 tests (4 agents build, filter tools, prompt validation, 47 tool count)
+- **front/backend**: 24/24 tests passing (pytest)
+  - `test_agent.py` — 6 tests (graph compilation, system prompt 51 tools, capabilities section, destructive ops section, DESTRUCTIVE_TOOLS constant)
+  - `test_agents.py` — 17 tests (7 agents build, filter tools, prompt validation, 51 tool count)
   - `test_api.py` — 1 test (health endpoint with mocked MCP)
-- **front/frontend**: TypeScript strict + Vite build — 0 errors
+- **front/frontend**: TypeScript strict + Vite build — 0 errors (~995 kB bundle)
 - **front/ E2E** (13/13 automated test suite passing):
-  - MCP server (:3000) → health ok, 47 tools loaded
-  - Backend (:8001) → mcp:online, agent:ready, tools_count:47
+  - MCP server (:3000) → health ok, 51 tools loaded
+  - Backend (:8001) → mcp:online, agent:ready, tools_count:51
   - REST: GET /api/catalog/skills, /commands, /subagents, /mcps → all return data
   - REST: GET /api/stats → catalog totals correct
   - WebSocket chat with real GPT-4o → 4/4 scenarios passed:
@@ -1093,18 +1137,22 @@ MAL MCP Hub evolves from a tool catalog into a **team collaboration and work man
 │  │  │ Chat Agent   │  │ Interaction  │  │ Sprint       │           │  │
 │  │  │ (existing)   │  │ Analyzer     │  │ Reporter     │           │  │
 │  │  │ GPT-4o +     │  │ Agent        │  │ Agent        │           │  │
-│  │  │ 47 MCP tools │  │ GPT-4o       │  │ GPT-4o       │           │  │
+│  │  │ 51 MCP tools │  │ GPT-4o       │  │ GPT-4o       │           │  │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘           │  │
-│  │  ┌──────────────┐  ┌──────────────┐                              │  │
-│  │  │ Next Steps   │  │ Contribution │                              │  │
-│  │  │ Suggester    │  │ Scorer       │                              │  │
-│  │  │ Agent        │  │ Agent        │                              │  │
-│  │  │ GPT-4o       │  │ GPT-4o       │                              │  │
-│  │  └──────────────┘  └──────────────┘                              │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │  │
+│  │  │ Next Steps   │  │ Contribution │  │ Code Review  │           │  │
+│  │  │ Suggester    │  │ Scorer       │  │ Agent        │           │  │
+│  │  │ GPT-4o       │  │ GPT-4o       │  │ GPT-4o       │           │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘           │  │
+│  │  ┌──────────────┐                                                │  │
+│  │  │ Daily Summary│                                                │  │
+│  │  │ Agent        │                                                │  │
+│  │  │ GPT-4o       │                                                │  │
+│  │  └──────────────┘                                                │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                              │                                          │
 │  ┌───────────────────────────▼───────────────────────────────────────┐  │
-│  │           langchain-mcp-adapters (47 MCP tools)                   │  │
+│  │           langchain-mcp-adapters (51 MCP tools)                   │  │
 │  └───────────────────────────┬───────────────────────────────────────┘  │
 └──────────────────────────────┼──────────────────────────────────────────┘
                                │ Streamable HTTP
@@ -1112,15 +1160,16 @@ MAL MCP Hub evolves from a tool catalog into a **team collaboration and work man
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    mal-mcp-hub (on-premise :3000)                       │
 │                                                                         │
-│  Existing (22 tools)              New (25 tools)                        │
+│  Existing (22 tools)              New (29 tools)                        │
 │  ┌──────────────────┐             ┌──────────────────────────────────┐  │
 │  │ registry (7)     │             │ interactions (4)                 │  │
 │  │ skills (2)       │             │ sprints (4)                      │  │
-│  │ commands (4)     │             │ work_items (4)                   │  │
+│  │ commands (4)     │             │ work_items (5)                   │  │
 │  │ subagents (3)    │             │ team (3)                         │  │
 │  │ mcp-proxy (2)    │             │ gamification (3)                 │  │
-│  │ meta (4)         │             │ analytics (2)                    │  │
+│  │ meta (4)         │             │ analytics (3)                    │  │
 │  └──────────────────┘             │ projects (5)                     │  │
+│                                   │ audit (2)                        │  │
 │                                   └──────────────────────────────────┘  │
 │                                                                         │
 │  SQLite: 14 tables + FTS5 (catalog_fts)                                │
@@ -1354,11 +1403,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS interactions_fts USING fts5(
 | `mal_get_commit_activity` | Git commit data for graphs | repo_path?, days?, user_id? → returns daily counts, per-user stats |
 | `mal_get_sprint_report` | Sprint analytics with AI summary | sprint_id → velocity, burndown data, completion %, AI analysis |
 
-**Total**: 22 original + 20 collaboration + 5 projects = **47 MCP tools**
+**Total**: 22 original + 20 collaboration + 5 projects + 4 (Phase 14: audit, bulk, retrospective) = **51 MCP tools**
 
-### LangGraph Multi-Agent System (4 Specialized Agents)
+### LangGraph Multi-Agent System (6 Specialized Agents + Chat)
 
-All agents use **GPT-4o** via `langchain-openai`, with MCP tools bound via `langchain-mcp-adapters`. Each agent is a LangGraph `StateGraph` with its own state, system prompt, and tool subset.
+All agents use **GPT-4o** via `langchain-openai`, with MCP tools bound via `langchain-mcp-adapters`. Each agent is a LangGraph `StateGraph` with its own state, system prompt, and tool subset. The chat agent uses `AsyncSqliteSaver` for persistent memory; specialized agents use `MemorySaver`.
 
 #### Agent 1: Interaction Analyzer
 
@@ -1467,7 +1516,7 @@ Levels (calculated from total XP):
 | `first-chat` | Conversationalist | 💬 | bronze | collaboration | 1 interaction logged |
 | `fifty-chats` | Knowledge Seeker | 📚 | silver | collaboration | 50 interactions |
 | `tool-explorer` | Tool Explorer | 🔧 | silver | exploration | Use 10 different MCP tools |
-| `tool-master` | Tool Master | 🛠️ | gold | exploration | Use all 47 MCP tools |
+| `tool-master` | Tool Master | 🛠️ | gold | exploration | Use all 51 MCP tools |
 | `sprint-runner` | Sprint Runner | 🏃 | bronze | agile | Complete 1 sprint |
 | `sprint-champion` | Sprint Champion | 🏆 | gold | agile | Lead velocity for 3 sprints |
 | `bug-slayer` | Bug Slayer | 🐛 | silver | code | Close 10 bugs |
@@ -1658,6 +1707,31 @@ Phase 13: Code Review & Hardening           ┐ ✅ COMPLETE
   13.5 UI fixes: autolinks regex,           │
        remove hardcoded repo URL,          │
        port default 8001, DnD key fix      ┘
+         │
+Phase 14: MCP Server + Assistant + Frontend ┐ ✅ COMPLETE
+  14A.1 Audit log (withAudit + 2 tools)    │ MCP Server
+  14A.2 Bulk operations                     │ (on-premise/ + nube/)
+       (mal_bulk_update_work_items)        │
+  14A.3 Retrospective tool                  │
+       (mal_run_retrospective)             │
+  14A.4 Custom fields documentation         ┘
+  14B.1 Persistent memory                   ┐
+       (AsyncSqliteSaver)                  │ Conversational
+  14B.2 Natural language Kanban prompts     │ Assistant
+  14B.3 Code Review agent (6th)             │ (front/backend/)
+  14B.4 Daily Summary agent (7th)           │
+  14B.5 Story point estimation prompts      ┘
+  14C.1 Dark mode (class strategy +         ┐
+       useTheme hook)                      │
+  14C.2 Real charts (Recharts: Area,        │
+       Bar, Pie)                           │
+  14C.3 Enhanced Kanban (WIP limits,        │ Frontend
+       priority borders, filters)          │ (front/frontend/)
+  14C.4 Command Palette (Cmd+K)             │
+  14C.5 Notification system (bell +         │
+       polling activity feed)              │
+  14C.6 Activity timeline                   │
+  14C.7 Dependency tree                     ┘
 ```
 
 ### Phase 5.5 — Catalog Seeding (Skills, Commands, Subagents, External MCPs)
@@ -1809,9 +1883,11 @@ Run via: `npm run seed:full` (on-premise) or `npm run seed:full` (nube)
 **Python Backend (front/backend)**:
 ```
 # New
-langgraph-checkpoint>=2.0.0     # Agent memory/checkpointing (InMemorySaver)
-simple-git>=0.1.0               # or GitPython — for git log parsing
-apscheduler>=3.10.0             # Scheduled agent runs (Team Pulse, achievement checks)
+langgraph-checkpoint>=2.0.0         # Agent memory/checkpointing
+langgraph-checkpoint-sqlite>=2.0.0  # AsyncSqliteSaver for persistent chat memory
+aiosqlite>=0.20.0                   # Async SQLite driver for checkpointer
+simple-git>=0.1.0                   # or GitPython — for git log parsing
+apscheduler>=3.10.0                 # Scheduled agent runs (Team Pulse, achievement checks)
 ```
 
 **React Frontend (front/frontend)**:

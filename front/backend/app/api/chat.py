@@ -64,73 +64,100 @@ async def _stream_and_check_interrupt(
     Otherwise sends 'done'.
     """
     try:
-        async for event in agent.astream_events(
-            input_data,
-            config=config,
-            version="v2",
-        ):
-            kind = event["event"]
-
-            if kind == "on_chat_model_stream":
-                chunk = event["data"].get("chunk")
-                if chunk and hasattr(chunk, "content"):
-                    text = _extract_content(chunk.content)
-                    if text:
-                        await ws.send_text(json.dumps({
-                            "type": "token",
-                            "content": text,
-                        }))
-
-            elif kind == "on_tool_start":
-                tool_name = event.get("name", "unknown")
-                raw_input = event.get("data", {}).get("input", {})
-                await ws.send_text(json.dumps({
-                    "type": "tool_call",
-                    "content": "",
-                    "tool_call": {
-                        "tool_name": tool_name,
-                        "arguments": _safe_args(raw_input),
-                    },
-                }))
-
-            elif kind == "on_tool_end":
-                tool_name = event.get("name", "unknown")
-                output = event.get("data", {}).get("output", "")
-                if hasattr(output, "content"):
-                    result_text = _extract_content(output.content)
-                else:
-                    result_text = str(output)
-                await ws.send_text(json.dumps({
-                    "type": "tool_result",
-                    "content": "",
-                    "tool_call": {
-                        "tool_name": tool_name,
-                        "arguments": {},
-                        "result": result_text,
-                    },
-                }))
-
-        # Check if the graph is paused (interrupt pending)
-        state = await agent.aget_state(config)
-        if state.next:  # graph paused, not at END
-            for task in state.tasks:
-                if hasattr(task, "interrupts") and task.interrupts:
-                    interrupt_value = task.interrupts[0].value
-                    await ws.send_text(json.dumps({
-                        "type": "confirm",
-                        "content": "",
-                        "confirm": interrupt_value,
-                    }))
-                    return  # don't send "done" — waiting for user response
-
-        await ws.send_text(json.dumps({"type": "done", "content": ""}))
-
+        await _do_stream(ws, agent, input_data, config)
     except Exception as e:
+        error_msg = str(e)
+        # Detect corrupted thread state (orphaned tool_calls without ToolMessages).
+        # This happens when the server crashes mid-tool-call and the checkpointer
+        # saved an incomplete conversation. Fix: clear the thread and retry once.
+        if "tool_call_id" in error_msg and "did not have response messages" in error_msg:
+            logger.warning("Corrupted thread state detected, clearing thread %s",
+                           config["configurable"]["thread_id"])
+            try:
+                await agent.checkpointer.adelete_thread(config["configurable"]["thread_id"])
+            except Exception:
+                logger.warning("Could not delete thread, continuing with fresh state")
+            try:
+                await _do_stream(ws, agent, input_data, config)
+                return
+            except Exception as retry_err:
+                logger.exception("Retry after thread clear also failed")
+                error_msg = str(retry_err)
+
         logger.exception("Agent streaming error")
         await ws.send_text(json.dumps({
             "type": "error",
-            "content": f"Agent error: {str(e)}",
+            "content": f"Agent error: {error_msg}",
         }))
+
+
+async def _do_stream(
+    ws: WebSocket,
+    agent,
+    input_data,
+    config: dict,
+) -> None:
+    """Inner streaming loop — separated so _stream_and_check_interrupt can retry."""
+    async for event in agent.astream_events(
+        input_data,
+        config=config,
+        version="v2",
+    ):
+        kind = event["event"]
+
+        if kind == "on_chat_model_stream":
+            chunk = event["data"].get("chunk")
+            if chunk and hasattr(chunk, "content"):
+                text = _extract_content(chunk.content)
+                if text:
+                    await ws.send_text(json.dumps({
+                        "type": "token",
+                        "content": text,
+                    }))
+
+        elif kind == "on_tool_start":
+            tool_name = event.get("name", "unknown")
+            raw_input = event.get("data", {}).get("input", {})
+            await ws.send_text(json.dumps({
+                "type": "tool_call",
+                "content": "",
+                "tool_call": {
+                    "tool_name": tool_name,
+                    "arguments": _safe_args(raw_input),
+                },
+            }))
+
+        elif kind == "on_tool_end":
+            tool_name = event.get("name", "unknown")
+            output = event.get("data", {}).get("output", "")
+            if hasattr(output, "content"):
+                result_text = _extract_content(output.content)
+            else:
+                result_text = str(output)
+            await ws.send_text(json.dumps({
+                "type": "tool_result",
+                "content": "",
+                "tool_call": {
+                    "tool_name": tool_name,
+                    "arguments": {},
+                    "result": result_text,
+                },
+            }))
+
+    # Check if the graph is paused (interrupt pending)
+    state = await agent.aget_state(config)
+    if state.next:  # graph paused, not at END
+        for task in state.tasks:
+            if hasattr(task, "interrupts") and task.interrupts:
+                interrupt_value = task.interrupts[0].value
+                await ws.send_text(json.dumps({
+                    "type": "confirm",
+                    "content": "",
+                    "confirm": interrupt_value,
+                }))
+                return  # don't send "done" — waiting for user response
+
+    await ws.send_text(json.dumps({"type": "done", "content": ""}))
 
 
 async def _stream_agent(ws: WebSocket, agent_name: str, prompt: str) -> None:
@@ -211,6 +238,7 @@ async def chat_websocket(ws: WebSocket):
     await ws.accept()
     logger.info("WebSocket client connected")
 
+    # Default thread_id if client doesn't provide one
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -219,6 +247,12 @@ async def chat_websocket(ws: WebSocket):
             data = await ws.receive_text()
             payload = json.loads(data)
             msg_type = payload.get("type", "message")
+
+            # Use client-provided thread_id for persistent memory
+            client_thread = payload.get("thread_id")
+            if client_thread and client_thread != thread_id:
+                thread_id = client_thread
+                config = {"configurable": {"thread_id": thread_id}}
 
             # --- Handle confirmation response (resume interrupted graph) ---
             if msg_type == "confirm_response":
@@ -327,3 +361,59 @@ Gather context, analyze priorities, and generate 5-10 actionable suggestions."""
         logger.info("Next steps WS disconnected")
     except Exception:
         logger.exception("Next steps WS error")
+
+
+@router.websocket("/ws/code-review")
+async def ws_code_review(ws: WebSocket):
+    """Stream code review analysis in real-time."""
+    await ws.accept()
+    try:
+        data = await ws.receive_text()
+        payload = json.loads(data)
+        code = payload.get("code", "")
+        language = payload.get("language", "")
+        context = payload.get("context", "")
+
+        prompt = f"""Review the following code and provide structured feedback.
+
+Language: {language or "(auto-detect)"}
+Context: {context or "(none provided)"}
+
+```
+{code}
+```
+
+Check for security issues (OWASP Top 10), performance, readability, and testing. Reference team standards from the skills catalog when available."""
+
+        await _stream_agent(ws, "code_reviewer", prompt)
+    except WebSocketDisconnect:
+        logger.info("Code review WS disconnected")
+    except Exception:
+        logger.exception("Code review WS error")
+
+
+@router.websocket("/ws/daily-summary")
+async def ws_daily_summary(ws: WebSocket):
+    """Stream daily/weekly team summary in real-time."""
+    await ws.accept()
+    try:
+        data = await ws.receive_text()
+        payload = json.loads(data)
+        period = payload.get("period", "daily")
+        project_id = payload.get("project_id")
+        sprint_id = payload.get("sprint_id")
+
+        project_line = f"Project ID: {project_id}" if project_id else ""
+        sprint_line = f"Sprint ID: {sprint_id}" if sprint_id else ""
+        prompt = f"""Generate a {period} team summary.
+
+{project_line}
+{sprint_line}
+
+Check active sprints, recent work items, commit activity, interactions, and leaderboard. Format as a structured digest with Yesterday/Today/Blockers sections."""
+
+        await _stream_agent(ws, "daily_summary", prompt)
+    except WebSocketDisconnect:
+        logger.info("Daily summary WS disconnected")
+    except Exception:
+        logger.exception("Daily summary WS error")

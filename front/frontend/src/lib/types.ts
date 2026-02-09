@@ -208,6 +208,7 @@ export interface BoardItem {
   sprint_id?: string;
   labels?: string[];
   type?: string;
+  parent_id?: string;
 }
 
 export type BoardColumns = Record<BoardStatus, BoardItem[]>;

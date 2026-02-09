@@ -30,10 +30,10 @@ export function InteractionsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <History className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">Interactions</h2>
+          <h2 className="text-lg font-semibold dark:text-gray-100">Interactions</h2>
         </div>
         <Button
           variant="ghost"
@@ -63,7 +63,7 @@ export function InteractionsPage() {
                 placeholder="Search interactions..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border py-2 pl-9 pr-3 text-sm"
+                className="w-full rounded-md border py-2 pl-9 pr-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
               />
             </div>
             <Button type="submit" size="sm" disabled={searchQuery.trim().length < 2}>
@@ -77,7 +77,7 @@ export function InteractionsPage() {
               setActiveSearch("");
               setSearchQuery("");
             }}
-            className="rounded-md border px-2 py-1.5 text-sm"
+            className="rounded-md border px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All types</option>
             {TYPE_OPTIONS.filter(Boolean).map((t) => (
@@ -90,7 +90,7 @@ export function InteractionsPage() {
 
         {isSearching && (
           <div className="mb-3 flex items-center gap-2">
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               Search results for "{activeSearch}"
             </span>
             <button
@@ -98,7 +98,7 @@ export function InteractionsPage() {
                 setActiveSearch("");
                 setSearchQuery("");
               }}
-              className="text-xs text-mal-600 hover:underline"
+              className="text-xs text-mal-600 hover:underline dark:text-mal-400"
             >
               Clear search
             </button>

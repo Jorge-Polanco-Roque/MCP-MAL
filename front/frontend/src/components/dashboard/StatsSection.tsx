@@ -16,11 +16,11 @@ export function StatsSection() {
       <CardContent>
         {isLoading ? (
           <div className="animate-pulse space-y-2">
-            <div className="h-3 w-full rounded bg-gray-200" />
-            <div className="h-3 w-3/4 rounded bg-gray-200" />
+            <div className="h-3 w-full rounded bg-gray-200 dark:bg-gray-700" />
+            <div className="h-3 w-3/4 rounded bg-gray-200 dark:bg-gray-700" />
           </div>
         ) : data?.data ? (
-          <pre className="text-xs text-gray-600 whitespace-pre-wrap overflow-x-auto">
+          <pre className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap overflow-x-auto">
             {typeof data.data === "string" ? data.data : JSON.stringify(data.data, null, 2)}
           </pre>
         ) : (

@@ -10,8 +10,8 @@ export function StatusCard() {
       <Card>
         <CardContent className="p-4">
           <div className="animate-pulse space-y-2">
-            <div className="h-4 w-24 rounded bg-gray-200" />
-            <div className="h-3 w-32 rounded bg-gray-200" />
+            <div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
+            <div className="h-3 w-32 rounded bg-gray-200 dark:bg-gray-700" />
           </div>
         </CardContent>
       </Card>
@@ -25,7 +25,7 @@ export function StatusCard() {
           <XCircle className="h-5 w-5 text-red-500" />
           <div>
             <p className="font-medium text-sm">Server Offline</p>
-            <p className="text-xs text-gray-500">Could not connect to backend</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Could not connect to backend</p>
           </div>
         </CardContent>
       </Card>
@@ -61,12 +61,12 @@ export function StatusCard() {
                 {data.mcp_status}
               </span>
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Agent: {data.agent_status}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <Activity className="h-3 w-3" />
           <span>{data.tools_count} tools available</span>
         </div>

@@ -98,18 +98,18 @@ function generateItemId(): string {
 // ─── Style maps ───
 
 const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-700",
-  high: "bg-orange-100 text-orange-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  low: "bg-gray-100 text-gray-600",
+  critical: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  high: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  low: "bg-gray-100 text-gray-600 dark:bg-gray-700/40 dark:text-gray-400",
 };
 
 const TYPE_STYLES: Record<string, string> = {
-  bug: "bg-red-50 text-red-600 border-red-200",
-  task: "bg-blue-50 text-blue-600 border-blue-200",
-  story: "bg-green-50 text-green-600 border-green-200",
-  epic: "bg-purple-50 text-purple-600 border-purple-200",
-  spike: "bg-amber-50 text-amber-600 border-amber-200",
+  bug: "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
+  task: "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
+  story: "bg-green-50 text-green-600 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800",
+  epic: "bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800",
+  spike: "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
 };
 
 // ─── Component ───
@@ -264,18 +264,18 @@ export function NextStepsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <Lightbulb className="h-5 w-5 text-yellow-500" />
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold dark:text-gray-100">
             Next Steps
             {activeProject && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
+              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {activeProject.name}
               </span>
             )}
           </h2>
-          <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700">
+          <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">
             AI-Powered
           </span>
         </div>
@@ -283,7 +283,7 @@ export function NextStepsPage() {
           <select
             value={sprintId}
             onChange={(e) => setSprintId(e.target.value)}
-            className="w-44 rounded-md border px-2 py-1.5 text-sm"
+            className="w-44 rounded-md border px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All sprints</option>
             {sprints.map((s) => (
@@ -316,9 +316,9 @@ export function NextStepsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {/* ── Idle: empty state ── */}
         {phase === "idle" && (
-          <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400">
+          <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400 dark:text-gray-500">
             <Lightbulb className="mb-4 h-16 w-16" />
-            <p className="text-lg font-medium">AI-Powered Next Steps</p>
+            <p className="text-lg font-medium dark:text-gray-300">AI-Powered Next Steps</p>
             <p className="mt-2 max-w-md text-sm">
               Click &quot;Generate&quot; to analyze your project and get
               prioritized, actionable suggestions. You can accept them one by
@@ -334,7 +334,7 @@ export function NextStepsPage() {
               <CardContent className="p-6">
                 <div className="mb-4 flex items-center gap-3">
                   <Sparkles className="h-5 w-5 animate-pulse text-yellow-500" />
-                  <h3 className="text-base font-semibold">
+                  <h3 className="text-base font-semibold dark:text-gray-100">
                     Analyzing your project...
                   </h3>
                 </div>
@@ -344,7 +344,7 @@ export function NextStepsPage() {
                     {toolCalls.map((tool, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2 text-sm text-gray-500"
+                        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
                       >
                         <Check className="h-3.5 w-3.5 text-green-500" />
                         <span className="font-mono text-xs">{tool}</span>
@@ -375,16 +375,16 @@ export function NextStepsPage() {
           <div className="mx-auto max-w-2xl">
             {/* Progress header */}
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-600">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
                 Suggestion {currentIndex + 1} of {suggestions.length}
               </span>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {accepted.length} accepted · {skipped.length} skipped
               </span>
             </div>
 
             {/* Progress bar */}
-            <div className="mb-6 h-1.5 w-full rounded-full bg-gray-200">
+            <div className="mb-6 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
               <div
                 className="h-1.5 rounded-full bg-mal-500 transition-all duration-300"
                 style={{
@@ -418,13 +418,13 @@ export function NextStepsPage() {
                 </div>
 
                 {/* Title */}
-                <h3 className="mb-4 text-lg font-bold text-gray-900">
+                <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">
                   {current.title}
                 </h3>
 
                 {/* Description */}
                 {current.description && (
-                  <div className="prose prose-sm max-w-none text-gray-600">
+                  <div className="prose prose-sm max-w-none text-gray-600 dark:prose-invert dark:text-gray-300">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {current.description}
                     </ReactMarkdown>
@@ -432,7 +432,7 @@ export function NextStepsPage() {
                 )}
 
                 {/* Action buttons */}
-                <div className="mt-6 flex items-center gap-3 border-t pt-4">
+                <div className="mt-6 flex items-center gap-3 border-t pt-4 dark:border-gray-600">
                   <Button
                     onClick={handleAccept}
                     disabled={createMutation.isPending}
@@ -467,12 +467,12 @@ export function NextStepsPage() {
         {/* ── Complete: summary ── */}
         {phase === "complete" && (
           <div className="mx-auto max-w-2xl">
-            <Card className="border-2 border-green-200">
+            <Card className="border-2 border-green-200 dark:border-green-800">
               <CardContent className="p-6 text-center">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                  <Check className="h-6 w-6 text-green-600" />
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40">
+                  <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
                 </div>
-                <h3 className="mb-2 text-lg font-bold">Review Complete</h3>
+                <h3 className="mb-2 text-lg font-bold dark:text-gray-100">Review Complete</h3>
 
                 {accepted.length > 0 || skipped.length > 0 ? (
                   <>
@@ -482,27 +482,27 @@ export function NextStepsPage() {
                         <span className="text-2xl font-bold text-green-600">
                           {accepted.length}
                         </span>
-                        <p className="text-gray-500">accepted</p>
+                        <p className="text-gray-500 dark:text-gray-400">accepted</p>
                       </div>
                       <div>
-                        <span className="text-2xl font-bold text-gray-400">
+                        <span className="text-2xl font-bold text-gray-400 dark:text-gray-500">
                           {skipped.length}
                         </span>
-                        <p className="text-gray-500">skipped</p>
+                        <p className="text-gray-500 dark:text-gray-400">skipped</p>
                       </div>
                     </div>
 
                     {/* Accepted list */}
                     {accepted.length > 0 && (
                       <div className="mb-6 text-left">
-                        <h4 className="mb-2 text-sm font-semibold text-gray-700">
+                        <h4 className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
                           Created Work Items:
                         </h4>
                         <div className="space-y-1.5">
                           {accepted.map((s, i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-2 rounded bg-green-50 px-3 py-1.5 text-sm"
+                              className="flex items-center gap-2 rounded bg-green-50 px-3 py-1.5 text-sm dark:bg-green-900/20"
                             >
                               <Check className="h-3.5 w-3.5 shrink-0 text-green-500" />
                               <span className="flex-1 font-medium">
@@ -526,11 +526,11 @@ export function NextStepsPage() {
                 ) : (
                   /* Fallback: could not parse suggestions */
                   <div className="mb-6">
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
                       No structured suggestions could be extracted. Here is the
                       raw output:
                     </p>
-                    <div className="prose prose-sm mt-4 max-w-none rounded-lg border bg-gray-50 p-4 text-left">
+                    <div className="prose prose-sm mt-4 max-w-none rounded-lg border bg-gray-50 p-4 text-left dark:prose-invert dark:border-gray-600 dark:bg-gray-800">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {rawContent}
                       </ReactMarkdown>

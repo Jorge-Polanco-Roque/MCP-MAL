@@ -1,8 +1,11 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
+import aiosqlite
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.config import settings
 from app.api.router import api_router
@@ -32,6 +35,15 @@ async def lifespan(app: FastAPI):
     from app.agent.sprint_reporter import build_sprint_reporter
     from app.agent.next_steps import build_next_steps_suggester
     from app.agent.contribution_scorer import build_contribution_scorer
+    from app.agent.code_reviewer import build_code_reviewer
+    from app.agent.daily_summary import build_daily_summary
+
+    # Open persistent SQLite connection for chat checkpointer
+    db_path = settings.chat_db_path
+    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+    conn = await aiosqlite.connect(db_path)
+    checkpointer = AsyncSqliteSaver(conn)
+    await checkpointer.setup()
 
     try:
         await create_mcp_client()
@@ -39,11 +51,13 @@ async def lifespan(app: FastAPI):
         logger.info("Loaded %d MCP tools", len(tools))
 
         # Build all agents with the same tool set (each filters its own subset)
-        _agents["chat"] = build_agent(tools)
+        _agents["chat"] = build_agent(tools, checkpointer=checkpointer)
         _agents["interaction_analyzer"] = build_interaction_analyzer(tools)
         _agents["sprint_reporter"] = build_sprint_reporter(tools)
         _agents["next_steps"] = build_next_steps_suggester(tools)
         _agents["contribution_scorer"] = build_contribution_scorer(tools)
+        _agents["code_reviewer"] = build_code_reviewer(tools)
+        _agents["daily_summary"] = build_daily_summary(tools)
 
         built = [name for name, agent in _agents.items() if agent is not None]
         logger.info("Agents ready: %s (%d/%d)", ", ".join(built), len(built), len(_agents))
@@ -55,6 +69,7 @@ async def lifespan(app: FastAPI):
 
     await close_mcp_client()
     _agents.clear()
+    await conn.close()
     logger.info("Shutdown complete")
 
 

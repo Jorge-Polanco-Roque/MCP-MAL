@@ -14,6 +14,7 @@ import { registerTeamTools } from "./tools/team.js";
 import { registerGamificationTools } from "./tools/gamification.js";
 import { registerAnalyticsTools } from "./tools/analytics.js";
 import { registerProjectTools } from "./tools/projects.js";
+import { registerAuditTools } from "./tools/audit.js";
 
 export interface Services {
   db: IDatabase;
@@ -39,6 +40,9 @@ export function registerAllTools(server: McpServer, services: Services): void {
   registerGamificationTools(server, db);
   registerAnalyticsTools(server, db);
 
-  // Project tools (4)
+  // Project tools (5)
   registerProjectTools(server, db);
+
+  // Audit tools (2)
+  registerAuditTools(server, db);
 }

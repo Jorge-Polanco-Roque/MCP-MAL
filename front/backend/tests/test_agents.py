@@ -95,6 +95,30 @@ def mal_register_team_member(id: str) -> str:
     return "registered"
 
 
+@tool
+def mal_search_catalog(query: str) -> str:
+    """Search catalog."""
+    return "results"
+
+
+@tool
+def mal_get_skill_content(id: str) -> str:
+    """Get skill content."""
+    return "content"
+
+
+@tool
+def mal_list_skills(category: str = "") -> str:
+    """List skills."""
+    return "skills"
+
+
+@tool
+def mal_get_audit_log(tool_name: str = "") -> str:
+    """Get audit log."""
+    return "log"
+
+
 ALL_MOCK_TOOLS = [
     mal_log_interaction,
     mal_search_interactions,
@@ -111,6 +135,10 @@ ALL_MOCK_TOOLS = [
     mal_get_team_member,
     mal_get_achievements,
     mal_register_team_member,
+    mal_search_catalog,
+    mal_get_skill_content,
+    mal_list_skills,
+    mal_get_audit_log,
 ]
 
 
@@ -229,6 +257,76 @@ def test_contribution_scorer_filters_tools():
     assert "mal_list_work_items" not in TOOL_NAMES
 
 
+# --- Code Reviewer ---
+
+def test_code_reviewer_builds():
+    """Code Reviewer should compile with its tool subset."""
+    with patch("app.agent.code_reviewer.ChatOpenAI") as mock_cls:
+        mock_cls.return_value = _patch_llm()
+
+        from app.agent.code_reviewer import build_code_reviewer
+        agent = build_code_reviewer(ALL_MOCK_TOOLS)
+        assert agent is not None
+        assert hasattr(agent, "invoke")
+        assert hasattr(agent, "astream_events")
+
+
+def test_code_reviewer_filters_tools():
+    """Code Reviewer should use catalog and audit tools."""
+    from app.agent.code_reviewer import TOOL_NAMES
+    assert "mal_search_catalog" in TOOL_NAMES
+    assert "mal_get_skill_content" in TOOL_NAMES
+    assert "mal_list_skills" in TOOL_NAMES
+    assert "mal_get_audit_log" in TOOL_NAMES
+    # Should NOT have sprint or contribution tools
+    assert "mal_get_sprint" not in TOOL_NAMES
+    assert "mal_log_contribution" not in TOOL_NAMES
+
+
+def test_code_reviewer_returns_none_with_no_tools():
+    """Code Reviewer should return None if no matching tools found."""
+    with patch("app.agent.code_reviewer.ChatOpenAI"):
+        from app.agent.code_reviewer import build_code_reviewer
+        agent = build_code_reviewer([])
+        assert agent is None
+
+
+# --- Daily Summary ---
+
+def test_daily_summary_builds():
+    """Daily Summary should compile with its tool subset."""
+    with patch("app.agent.daily_summary.ChatOpenAI") as mock_cls:
+        mock_cls.return_value = _patch_llm()
+
+        from app.agent.daily_summary import build_daily_summary
+        agent = build_daily_summary(ALL_MOCK_TOOLS)
+        assert agent is not None
+        assert hasattr(agent, "invoke")
+        assert hasattr(agent, "astream_events")
+
+
+def test_daily_summary_filters_tools():
+    """Daily Summary should use data-gathering tools."""
+    from app.agent.daily_summary import TOOL_NAMES
+    assert "mal_get_commit_activity" in TOOL_NAMES
+    assert "mal_list_work_items" in TOOL_NAMES
+    assert "mal_list_interactions" in TOOL_NAMES
+    assert "mal_get_sprint_report" in TOOL_NAMES
+    assert "mal_get_leaderboard" in TOOL_NAMES
+    assert "mal_list_sprints" in TOOL_NAMES
+    # Should NOT have write/mutation tools
+    assert "mal_log_contribution" not in TOOL_NAMES
+    assert "mal_update_sprint" not in TOOL_NAMES
+
+
+def test_daily_summary_returns_none_with_no_tools():
+    """Daily Summary should return None if no matching tools found."""
+    with patch("app.agent.daily_summary.ChatOpenAI"):
+        from app.agent.daily_summary import build_daily_summary
+        agent = build_daily_summary([])
+        assert agent is None
+
+
 # --- Prompts ---
 
 def test_prompts_exist_for_all_agents():
@@ -239,16 +337,20 @@ def test_prompts_exist_for_all_agents():
         SPRINT_REPORTER_PROMPT,
         NEXT_STEPS_PROMPT,
         CONTRIBUTION_SCORER_PROMPT,
+        CODE_REVIEWER_PROMPT,
+        DAILY_SUMMARY_PROMPT,
     )
     assert len(SYSTEM_PROMPT) > 100
     assert len(INTERACTION_ANALYZER_PROMPT) > 100
     assert len(SPRINT_REPORTER_PROMPT) > 100
     assert len(NEXT_STEPS_PROMPT) > 100
     assert len(CONTRIBUTION_SCORER_PROMPT) > 100
+    assert len(CODE_REVIEWER_PROMPT) > 100
+    assert len(DAILY_SUMMARY_PROMPT) > 100
 
 
-def test_system_prompt_describes_47_tools():
-    """System prompt should describe all 47 MCP tools including Projects."""
+def test_system_prompt_describes_51_tools():
+    """System prompt should describe all 51 MCP tools including Phase 14 additions."""
     from app.agent.prompts import SYSTEM_PROMPT
     # Original tools
     assert "mal_list_skills" in SYSTEM_PROMPT
@@ -263,4 +365,9 @@ def test_system_prompt_describes_47_tools():
     # Phase 11 project tools
     assert "mal_create_project" in SYSTEM_PROMPT
     assert "mal_delete_project" in SYSTEM_PROMPT
-    assert "47 MCP tools" in SYSTEM_PROMPT
+    # Phase 14 tools
+    assert "mal_get_audit_log" in SYSTEM_PROMPT
+    assert "mal_get_tool_usage_stats" in SYSTEM_PROMPT
+    assert "mal_bulk_update_work_items" in SYSTEM_PROMPT
+    assert "mal_run_retrospective" in SYSTEM_PROMPT
+    assert "51 MCP tools" in SYSTEM_PROMPT

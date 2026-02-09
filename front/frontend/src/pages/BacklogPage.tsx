@@ -29,13 +29,13 @@ export function BacklogPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <ListTodo className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold dark:text-gray-100">
             Backlog
             {activeProject && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
+              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {activeProject.name}
               </span>
             )}
@@ -71,7 +71,7 @@ export function BacklogPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border px-2 py-1.5 text-sm"
+            className="rounded-md border px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All statuses</option>
             {STATUS_OPTIONS.filter(Boolean).map((s) => (
@@ -83,7 +83,7 @@ export function BacklogPage() {
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
-            className="rounded-md border px-2 py-1.5 text-sm"
+            className="rounded-md border px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All priorities</option>
             {PRIORITY_OPTIONS.filter(Boolean).map((p) => (
@@ -98,7 +98,7 @@ export function BacklogPage() {
                 setStatusFilter("");
                 setPriorityFilter("");
               }}
-              className="text-xs text-mal-600 hover:underline"
+              className="text-xs text-mal-600 hover:underline dark:text-mal-400"
             >
               Clear filters
             </button>
@@ -158,8 +158,8 @@ function CreateWorkItemForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mb-6 rounded-lg border bg-white p-4">
-      <h3 className="mb-3 text-sm font-semibold">Create Work Item</h3>
+    <form onSubmit={handleSubmit} className="mb-6 rounded-lg border bg-white p-4 dark:border-gray-600 dark:bg-gray-800">
+      <h3 className="mb-3 text-sm font-semibold dark:text-gray-100">Create Work Item</h3>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="md:col-span-2">
           <input
@@ -167,7 +167,7 @@ function CreateWorkItemForm({
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
             required
           />
         </div>
@@ -176,14 +176,14 @@ function CreateWorkItemForm({
             placeholder="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
             rows={2}
           />
         </div>
         <select
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
         >
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -196,7 +196,7 @@ function CreateWorkItemForm({
           max="21"
           value={storyPoints}
           onChange={(e) => setStoryPoints(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
           placeholder="Story Points"
         />
       </div>

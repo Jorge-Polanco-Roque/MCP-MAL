@@ -2,7 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import interrupt
 
 from app.agent.prompts import SYSTEM_PROMPT
@@ -18,7 +18,7 @@ DESTRUCTIVE_TOOLS = frozenset({
 })
 
 
-def build_agent(tools: list):
+def build_agent(tools: list, checkpointer: BaseCheckpointSaver | None = None):
     """Build the LangGraph agent with MCP tools and human-in-the-loop confirmation."""
     llm = ChatOpenAI(
         model=settings.openai_model,
@@ -73,5 +73,4 @@ def build_agent(tools: list):
     graph.add_conditional_edges("call_model", should_continue, {"tools": "tools", END: END})
     graph.add_edge("tools", "call_model")
 
-    checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer)

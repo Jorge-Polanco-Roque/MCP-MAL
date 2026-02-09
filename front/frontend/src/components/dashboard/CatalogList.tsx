@@ -98,7 +98,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
         <input
           type="text"
           placeholder={`Search ${collection}...`}
-          className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-mal-500 focus:outline-none focus:ring-1 focus:ring-mal-500"
+          className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-mal-500 focus:outline-none focus:ring-1 focus:ring-mal-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -106,7 +106,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
 
       {/* Count indicator */}
       {canParse && (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           {search
             ? `${filtered.length} of ${items.length} ${collection}`
             : `${items.length} ${collection}`}
@@ -118,9 +118,9 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse rounded-md border p-3">
-                <div className="h-4 w-3/4 rounded bg-gray-200" />
-                <div className="mt-2 h-3 w-full rounded bg-gray-200" />
+              <div key={i} className="animate-pulse rounded-md border p-3 dark:border-gray-600/40">
+                <div className="h-4 w-3/4 rounded bg-gray-200 dark:bg-gray-700" />
+                <div className="mt-2 h-3 w-full rounded bg-gray-200 dark:bg-gray-700" />
               </div>
             ))}
           </div>
@@ -144,8 +144,8 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
                   className={cn(
                     "rounded-md border p-3 transition-colors cursor-pointer",
                     isExpanded
-                      ? "border-mal-300 bg-mal-50/30"
-                      : "hover:bg-gray-50"
+                      ? "border-mal-300 bg-mal-50/30 dark:border-mal-700 dark:bg-mal-900/20"
+                      : "hover:bg-gray-50 dark:border-gray-600/40 dark:hover:bg-gray-700/30"
                   )}
                   onClick={() => {
                     setExpandedId(isExpanded ? null : item.id);
@@ -156,7 +156,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900 truncate">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                           {item.name}
                         </span>
                         {item.version && (
@@ -167,7 +167,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
                         )}
                       </div>
                       <p className={cn(
-                        "mt-0.5 text-xs text-gray-500",
+                        "mt-0.5 text-xs text-gray-500 dark:text-gray-400",
                         !isExpanded && "line-clamp-2"
                       )}>
                         {item.description}
@@ -185,7 +185,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
                             .map((tag) => (
                               <span
                                 key={tag}
-                                className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500"
+                                className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400"
                               >
                                 {tag}
                               </span>
@@ -195,13 +195,13 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
 
                       {/* Expanded detail */}
                       {isExpanded && extraKeys.length > 0 && (
-                        <div className="mt-2 space-y-1 border-t pt-2">
+                        <div className="mt-2 space-y-1 border-t pt-2 dark:border-gray-600/40">
                           {extraKeys.map((key) => (
                             <div key={key} className="flex gap-2 text-xs">
-                              <span className="font-medium text-gray-500 capitalize shrink-0">
+                              <span className="font-medium text-gray-500 dark:text-gray-400 capitalize shrink-0">
                                 {key.replace(/_/g, " ")}:
                               </span>
-                              <span className="text-gray-700 break-all">
+                              <span className="text-gray-700 dark:text-gray-300 break-all">
                                 {item[key]}
                               </span>
                             </div>
@@ -229,7 +229,7 @@ export function CatalogList({ collection, onSelect }: CatalogListProps) {
         ) : rawContent ? (
           /* Fallback: raw markdown if we can't parse */
           <div className="space-y-2">
-            <pre className="text-xs text-gray-600 whitespace-pre-wrap overflow-x-auto rounded-md border bg-gray-50 p-3">
+            <pre className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap overflow-x-auto rounded-md border bg-gray-50 dark:bg-gray-800 dark:border-gray-600/40 p-3">
               {rawContent}
             </pre>
           </div>

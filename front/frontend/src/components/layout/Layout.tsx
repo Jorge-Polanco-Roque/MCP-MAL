@@ -13,11 +13,16 @@ import {
   FolderKanban,
   Menu,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { CommandPalette } from "./CommandPalette";
+import { NotificationBell } from "./NotificationBell";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { useHealth } from "@/hooks/useCatalog";
 import { useProjectContext } from "@/hooks/useProjectContext";
+import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 const MOBILE_NAV = [
@@ -38,6 +43,7 @@ export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: health } = useHealth();
   const { activeProject } = useProjectContext();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const statusColor =
     health?.mcp_status === "online"
@@ -48,31 +54,40 @@ export function Layout() {
 
   return (
     <div className="flex h-screen flex-col">
+      <CommandPalette />
       {/* Header */}
-      <header className="flex items-center justify-between border-b bg-white px-4 py-2 shadow-sm">
+      <header className="flex items-center justify-between border-b bg-white px-4 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center gap-3">
           {/* Mobile menu button */}
           <button
-            className="rounded-md p-1 text-gray-500 md:hidden"
+            className="rounded-md p-1 text-gray-500 dark:text-gray-400 md:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <img src="/mal-logo.svg" alt="MAL" className="h-8 w-8" />
           <div>
-            <h1 className="text-lg font-bold text-gray-900">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">
               MAL MCP Hub
               {activeProject && (
-                <span className="ml-2 text-sm font-medium text-mal-600">
+                <span className="ml-2 text-sm font-medium text-mal-600 dark:text-mal-400">
                   / {activeProject.name}
                 </span>
               )}
             </h1>
-            <p className="hidden text-xs text-gray-500 sm:block">Monterrey Agentic Labs</p>
+            <p className="hidden text-xs text-gray-500 dark:text-gray-400 sm:block">Monterrey Agentic Labs</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-gray-500">
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+          <NotificationBell />
+          <button
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            title={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
           <span className="flex items-center gap-1.5">
             <span className={cn("h-2 w-2 rounded-full", statusColor)} />
             {health?.mcp_status === "online" ? "Connected" : health?.mcp_status || "..."}
@@ -90,7 +105,7 @@ export function Layout() {
 
       {/* Mobile nav */}
       {mobileMenuOpen && (
-        <nav className="border-b bg-white p-2 md:hidden">
+        <nav className="border-b bg-white p-2 dark:border-gray-700 dark:bg-gray-900 md:hidden">
           <div className="grid grid-cols-3 gap-1">
             {MOBILE_NAV.map(({ to, icon: Icon, label }) => (
               <NavLink
@@ -102,8 +117,8 @@ export function Layout() {
                   cn(
                     "flex flex-col items-center gap-1 rounded-lg p-2 text-xs font-medium",
                     isActive
-                      ? "bg-mal-100 text-mal-700"
-                      : "text-gray-600 hover:bg-gray-50"
+                      ? "bg-mal-100 text-mal-700 dark:bg-mal-900/30 dark:text-mal-400"
+                      : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
                   )
                 }
               >

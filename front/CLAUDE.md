@@ -4,7 +4,7 @@
 
 `front/` is the web interface for **MAL MCP Hub** (Monterrey Agentic Labs). It consists of:
 
-- **Backend** (Python): FastAPI server with 5 LangGraph agents that connect to the MCP server (47 tools) via `langchain-mcp-adapters`
+- **Backend** (Python): FastAPI server with 7 LangGraph agents that connect to the MCP server (51 tools) via `langchain-mcp-adapters`
 - **Frontend** (TypeScript): React multi-page app with real-time chat, sprint board, analytics, gamification, and intelligence features
 
 ## Architecture
@@ -23,7 +23,7 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                   FastAPI Backend (:8001)                         │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │              5 LangGraph Agents (GPT-4o)                   │  │
+│  │              7 LangGraph Agents (GPT-4o)                   │  │
 │  │  ┌─────────┐ ┌───────────────┐ ┌──────────────────────┐   │  │
 │  │  │  Chat   │ │ Interaction   │ │  Sprint Reporter     │   │  │
 │  │  │  Agent  │ │ Analyzer      │ │                      │   │  │
@@ -31,6 +31,10 @@
 │  │  ┌─────────────────┐ ┌────────────────────────────────┐   │  │
 │  │  │ Next Steps      │ │ Contribution Scorer            │   │  │
 │  │  │ Suggester       │ │                                │   │  │
+│  │  └─────────────────┘ └────────────────────────────────┘   │  │
+│  │  ┌─────────────────┐ ┌────────────────────────────────┐   │  │
+│  │  │ Code Reviewer   │ │ Daily Summary                  │   │  │
+│  │  │                 │ │                                │   │  │
 │  │  └─────────────────┘ └────────────────────────────────┘   │  │
 │  └──────────────────────────┬─────────────────────────────────┘  │
 │                             │                                    │
@@ -43,7 +47,7 @@
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │               mal-mcp-hub (on-premise :3000)                     │
-│               47 MCP tools · SQLite · Filesystem                 │
+│               51 MCP tools · SQLite · Filesystem                 │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -60,12 +64,14 @@ front/
 │   ├── Dockerfile
 │   ├── .env.example
 │   ├── app/
-│   │   ├── main.py               ← FastAPI + lifespan (MCP init + 5 agents)
+│   │   ├── main.py               ← FastAPI + lifespan (MCP init + 7 agents)
 │   │   ├── config.py             ← pydantic-settings
 │   │   ├── agent/
-│   │   │   ├── graph.py          ← Chat agent: StateGraph (call_model + guarded_tools) + MemorySaver + interrupt()
+│   │   │   ├── graph.py          ← Chat agent: StateGraph + AsyncSqliteSaver + interrupt()
 │   │   │   ├── state.py          ← AgentState (MessagesState)
-│   │   │   └── prompts.py        ← System prompt (47 tools + Capabilities + Destructive Ops)
+│   │   │   ├── prompts.py        ← System prompt (51 tools + Capabilities + Destructive Ops)
+│   │   │   ├── code_reviewer.py  ← Code Review agent (4 MCP tools)
+│   │   │   └── daily_summary.py  ← Daily Summary agent (6 MCP tools)
 │   │   ├── agents/
 │   │   │   ├── interaction_analyzer.py  ← Summarizes conversations, extracts decisions
 │   │   │   ├── sprint_reporter.py       ← Sprint summaries + velocity analysis
@@ -75,7 +81,7 @@ front/
 │   │   ├── mcp/
 │   │   │   └── client.py         ← MultiServerMCPClient lifecycle
 │   │   ├── api/
-│   │   │   ├── chat.py           ← WebSocket /ws/chat (with interrupt/confirm), /ws/sprint-report, /ws/next-steps
+│   │   │   ├── chat.py           ← WebSocket /ws/chat, /ws/sprint-report, /ws/next-steps, /ws/code-review, /ws/daily-summary
 │   │   │   ├── agents.py         ← POST /api/analyze-interaction, /api/sprint-report, etc.
 │   │   │   ├── dashboard.py      ← GET /api/health, /api/catalog, /api/stats
 │   │   │   ├── data.py           ← GET/POST sprints, work-items, interactions, analytics, activity
@@ -84,8 +90,8 @@ front/
 │   │       └── schemas.py        ← Pydantic models
 │   └── tests/
 │       ├── conftest.py
-│       ├── test_agent.py         ← 6 tests (graph, prompt 47 tools, capabilities, destructive ops, DESTRUCTIVE_TOOLS)
-│       ├── test_agents.py        ← 11 tests (all 4 agents build + filter tools)
+│       ├── test_agent.py         ← 6 tests (graph, prompt 51 tools, capabilities, destructive ops, DESTRUCTIVE_TOOLS)
+│       ├── test_agents.py        ← 17 tests (all 7 agents build + filter tools)
 │       └── test_api.py           ← 1 test (health endpoint)
 │
 └── frontend/
@@ -101,8 +107,10 @@ front/
         │
         ├── components/
         │   ├── layout/
-        │   │   ├── Layout.tsx          ← Header + mobile nav + sidebar + ErrorBoundary
-        │   │   └── Sidebar.tsx         ← Collapsible desktop nav (9 items)
+        │   │   ├── Layout.tsx          ← Header + mobile nav + sidebar + dark mode toggle + ErrorBoundary
+        │   │   ├── Sidebar.tsx         ← Collapsible desktop nav (9 items, dark mode)
+        │   │   ├── CommandPalette.tsx   ← Cmd+K global search + keyboard navigation
+        │   │   └── NotificationBell.tsx ← Bell icon + unread badge + dropdown
         │   ├── chat/
         │   │   ├── ChatPanel.tsx       ← Chat with context toggle + reconnection status + confirm handling
         │   │   ├── MessageBubble.tsx   ← Markdown + autolinks + tool call cards + ConfirmationCard
@@ -112,12 +120,15 @@ front/
         │   ├── dashboard/
         │   │   ├── DashboardPanel.tsx  ← Status + activity feed + stats + catalog tabs
         │   │   ├── ActivityFeed.tsx    ← Recent interactions + top contributors
+        │   │   ├── ActivityTimeline.tsx ← Vertical timeline with typed icons
         │   │   ├── CatalogList.tsx     ← Skills/commands/subagents/mcps list
         │   │   ├── StatusCard.tsx      ← MCP health indicator
         │   │   └── StatsSection.tsx    ← Catalog totals
         │   ├── board/
-        │   │   ├── WorkItemCard.tsx   ← Draggable card (useSortable from @dnd-kit)
-        │   │   └── BoardColumn.tsx    ← Droppable column (useDroppable from @dnd-kit)
+        │   │   ├── WorkItemCard.tsx   ← Draggable card + priority border (useSortable)
+        │   │   ├── BoardColumn.tsx    ← Droppable column + WIP limit indicator
+        │   │   ├── BoardFilters.tsx   ← Filter bar (assignee, priority, type)
+        │   │   └── DependencyTree.tsx ← Tree visualization of parent-child hierarchy
         │   ├── gamification/
         │   │   ├── XpBar.tsx           ← XP progress bar with level name
         │   │   ├── LevelBadge.tsx      ← Circular badge color-coded by tier
@@ -133,7 +144,7 @@ front/
         │   ├── SprintsPage.tsx         ← Sprint board with DnD Kanban (4 cols) + sprint selector + create forms
         │   ├── BacklogPage.tsx         ← Work items with filters + create form
         │   ├── InteractionsPage.tsx    ← Search + type filter
-        │   ├── AnalyticsPage.tsx       ← Recharts bar chart + TeamPulse + leaderboard
+        │   ├── AnalyticsPage.tsx       ← Recharts (AreaChart + BarChart + PieChart) + TeamPulse
         │   ├── LeaderboardPage.tsx     ← Ranked table with medals/XP/level/streak
         │   ├── ProfilePage.tsx         ← Team member profile + XP bar + achievements
         │   ├── NextStepsPage.tsx       ← AI suggestions: card-by-card review → accept to Kanban
@@ -146,6 +157,7 @@ front/
         │   ├── useWebSocket.ts         ← Connection + exponential backoff reconnect
         │   ├── useCatalog.ts           ← React Query: health, catalog, stats
         │   ├── useProjectContext.tsx    ← Project selector context (activeProjectId, activeProject)
+        │   ├── useTheme.ts            ← Dark mode: light/dark/system + localStorage
         │   └── useData.ts             ← React Query: sprints, board, work-items, interactions, analytics, team, projects, achievements, activity
         │
         ├── lib/
@@ -156,7 +168,7 @@ front/
         │   └── autolink.ts            ← @user, #sprint-id, WI-xxx → markdown links
         │
         └── styles/
-            └── globals.css            ← Tailwind + custom scrollbar + typewriter cursor
+            └── globals.css            ← Tailwind + dark mode CSS vars + custom scrollbar
 ```
 
 ## Setup & Run
@@ -208,7 +220,7 @@ All 3 services have health checks. Backend waits for MCP to be healthy. Frontend
 ### Run Tests
 
 ```bash
-# Backend (18 tests)
+# Backend (24 tests)
 cd front/backend
 source .venv/bin/activate
 python -m pytest tests/ -v
@@ -224,9 +236,11 @@ npm run build
 
 | Endpoint | Description |
 |----------|-------------|
-| `WS /ws/chat` | Chat with the main agent. Send `{"message": "...", "context": "..."}`. Only the new message is sent — MemorySaver checkpointer handles history via per-connection `thread_id`. Supports `confirm`/`confirm_response` for destructive ops. |
+| `WS /ws/chat` | Chat with the main agent. Send `{"message": "...", "context": "..."}`. Only the new message is sent — AsyncSqliteSaver checkpointer handles persistent history via `thread_id` from localStorage. Supports `confirm`/`confirm_response` for destructive ops. |
 | `WS /ws/sprint-report` | Stream sprint report. Send `{"sprint_id": "...", "repo_path": "...", "days": 14}`. |
 | `WS /ws/next-steps` | Stream AI suggestions. Send `{"user_id": "...", "sprint_id": "..."}`. |
+| `WS /ws/code-review` | Stream code review analysis. Send `{"code": "...", "language": "...", "context": "..."}`. |
+| `WS /ws/daily-summary` | Stream daily/weekly team digest. Send `{"period": "daily\|weekly", "project_id": "...", "sprint_id": "..."}`. |
 
 ### WebSocket Message Types (server → client)
 
@@ -295,27 +309,29 @@ npm run build
 | `POST /api/next-steps` | Run next steps suggester agent |
 | `POST /api/score-contribution` | Run contribution scorer agent |
 
-## LangGraph Agents (5 total)
+## LangGraph Agents (7 total)
 
 All agents follow: `StateGraph(AgentState) → call_model → conditional → tools → loop → END`
 
 | Agent | File | Tools | Purpose |
 |-------|------|-------|---------|
-| **Chat** | `agent/graph.py` | All 47 MCP tools | Main chat interface + MemorySaver checkpointer + interrupt() for destructive ops |
+| **Chat** | `agent/graph.py` | All 51 MCP tools | Main chat interface + AsyncSqliteSaver checkpointer + interrupt() for destructive ops |
 | **Interaction Analyzer** | `agents/interaction_analyzer.py` | 5 tools | Summarize conversations, extract decisions |
 | **Sprint Reporter** | `agents/sprint_reporter.py` | 6 tools | Sprint summaries, velocity, retrospectives |
 | **Next Steps Suggester** | `agents/next_steps.py` | 6 tools | AI-powered prioritized recommendations |
 | **Contribution Scorer** | `agents/contribution_scorer.py` | 5 tools | Score contributions, award XP, unlock achievements |
+| **Code Reviewer** | `agent/code_reviewer.py` | 4 tools | Structured code review using team coding standards |
+| **Daily Summary** | `agent/daily_summary.py` | 6 tools | Daily/weekly team digests with commit + sprint data |
 
 ## Frontend Pages (11 routes)
 
 | Route | Page | Features |
 |-------|------|----------|
 | `/` | Chat | 2-column: chat panel + dashboard sidebar, context toggle |
-| `/sprints` | Sprint Board | Sprint selector + DnD Kanban (todo/in_progress/review/done) + create forms + optimistic updates |
+| `/sprints` | Sprint Board | Sprint selector + DnD Kanban (4 cols, WIP limits, priority borders, filters) + create forms + optimistic updates |
 | `/backlog` | Backlog | Work items with status/priority filters, inline create form |
 | `/interactions` | History | Full-text search + type filter |
-| `/analytics` | Analytics | Recharts bar chart (commits), TeamPulse, leaderboard, sprint overview |
+| `/analytics` | Analytics | Recharts (AreaChart commits, BarChart team contributions, PieChart sprint status), TeamPulse |
 | `/leaderboard` | Leaderboard | Per-project rankings, Sync Commits button, repo info bar, dev branch * note |
 | `/profile/:userId` | Profile | Team member card, XP bar, stats, achievements |
 | `/next-steps` | Next Steps | Card-by-card review: stream → accept/skip → create work items → Kanban |
@@ -353,7 +369,7 @@ XP formula (mirrors server-side `calculateLevel()`):
 
 ## Key Design Decisions
 
-1. **LangGraph multi-agent**: 5 specialized agents with tool filtering (not all 47 tools per agent)
+1. **LangGraph multi-agent**: 7 agents (chat + 6 specialized) with tool filtering (not all 51 tools per agent)
 2. **langchain-mcp-adapters**: Bridges MCP tools to LangChain tools via `MultiServerMCPClient`
 3. **WebSocket for streaming**: Real-time token + tool call streaming for chat, sprint reports, next steps
 4. **REST for data**: Cacheable endpoints with React Query (30s stale time)
@@ -361,7 +377,9 @@ XP formula (mirrors server-side `calculateLevel()`):
 6. **Auto-linking**: `@user`, `#sprint-id`, `WI-xxx` converted to markdown links in messages
 7. **ErrorBoundary**: React class component wraps page content for graceful error recovery
 8. **Exponential backoff**: WebSocket reconnection with 1s→2s→4s...30s cap, max 10 retries
-9. **Human-in-the-loop confirmation**: Destructive ops (`mal_delete_skill`, `mal_delete_project`, `mal_import_catalog`, `mal_execute_command`) use LangGraph `interrupt()` + `MemorySaver` checkpointer with per-connection `thread_id`. WebSocket sends `confirm` message → frontend shows `ConfirmationCard` → user clicks Approve/Cancel → client sends `confirm_response` → graph resumes via `Command(resume={"approved": bool})`
+9. **Human-in-the-loop confirmation**: Destructive ops (`mal_delete_skill`, `mal_delete_project`, `mal_import_catalog`, `mal_execute_command`) use LangGraph `interrupt()` + `AsyncSqliteSaver` checkpointer with persistent `thread_id` from localStorage. WebSocket sends `confirm` message → frontend shows `ConfirmationCard` → user clicks Approve/Cancel → client sends `confirm_response` → graph resumes via `Command(resume={"approved": bool})`
+10. **Dark mode**: `darkMode: "class"` strategy in Tailwind. `useTheme` hook manages light/dark/system with localStorage persistence. All components use `dark:` variants.
+11. **Audit logging**: All 51 tools wrapped with `withAudit()` HOF for automatic usage logging with timing and success/failure tracking.
 
 ## Known Fixes & Gotchas
 
@@ -423,6 +441,28 @@ XP formula (mirrors server-side `calculateLevel()`):
 
 29. **Backend port default to 8001** (fixed) — `config.py` default changed from 8000 to 8001 to match vite proxy, Docker Compose, and documentation.
 
+30. **Persistent chat memory with AsyncSqliteSaver** (enhancement) — Replaced `MemorySaver` (lost on restart) with `AsyncSqliteSaver` from `langgraph-checkpoint-sqlite`. Chat history persists across server restarts via SQLite file at `./data/chat_memory.db`. Frontend sends persistent `thread_id` from localStorage. New deps: `langgraph-checkpoint-sqlite>=2.0.0`, `aiosqlite>=0.20.0`.
+
+31. **Code Reviewer agent (6th)** (enhancement) — New `agent/code_reviewer.py` for structured code review. Uses 4 MCP tools. WebSocket endpoint: `/ws/code-review`. Accepts code, language, and context params.
+
+32. **Daily Summary agent (7th)** (enhancement) — New `agent/daily_summary.py` for daily/weekly team digests. Uses 6 MCP tools. WebSocket endpoint: `/ws/daily-summary`. Accepts period, project_id, and sprint_id params.
+
+33. **Dark mode with `useTheme` hook** (enhancement) — `tailwind.config.ts` uses `darkMode: "class"`. Hook at `hooks/useTheme.ts` supports `light`/`dark`/`system` modes with localStorage persistence and system preference detection. All components updated with `dark:` Tailwind variants.
+
+34. **Recharts `PieLabelRenderProps` type** (fixed) — Pie chart `label` callback must use `PieLabelRenderProps` type from recharts. The `name` and `value` fields are optional — use nullish coalescing (`name ?? ""`, `value ?? 0`).
+
+35. **WIP limits on Kanban board** (enhancement) — `BoardColumn.tsx` shows WIP limit indicators for `in_progress` (5) and `review` (3). Over-WIP columns display red border. `WorkItemCard.tsx` has priority color left border.
+
+36. **Command Palette (Cmd+K)** (enhancement) — `CommandPalette.tsx` provides global keyboard navigation across all pages. Modal with search + arrow key navigation + Enter to select.
+
+37. **Notification bell** (enhancement) — `NotificationBell.tsx` polls `/api/activity?limit=5` every 60s. Shows unread count badge and notification dropdown.
+
+38. **Activity timeline** (enhancement) — `ActivityTimeline.tsx` renders a vertical timeline with 5 typed icons. Includes `parseActivityEntries()` helper.
+
+39. **Dependency tree** (enhancement) — `DependencyTree.tsx` visualizes work item parent-child hierarchy. `parent_id` added to `BoardItem` type.
+
+40. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements nearly invisible in dark mode: `<select>` filters, form inputs, status badges, dropdown menus, and text colors. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and WorkItemCard. Patterns: form elements `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100`, status badges `dark:bg-{color}-900/40 dark:text-{color}-300`, containers `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
+
 ## Team Members
 
 Registered in the on-premise SQLite database:
@@ -438,11 +478,11 @@ XP is auto-synced from git commits via `mal_get_commit_activity`. To add new mem
 
 ## Test Status
 
-- **Backend tests** (pytest): 18/18 passing
-  - `test_agent.py` — 6 tests (graph compilation, system prompt 47 tools, capabilities section, destructive ops section, DESTRUCTIVE_TOOLS constant)
-  - `test_agents.py` — 11 tests (4 agents build, filter tools, prompt validation, 47 tool count)
+- **Backend tests** (pytest): 24/24 passing
+  - `test_agent.py` — 6 tests (graph compilation, system prompt 51 tools, capabilities section, destructive ops section, DESTRUCTIVE_TOOLS constant)
+  - `test_agents.py` — 17 tests (7 agents build, filter tools, prompt validation, 51 tool count)
   - `test_api.py` — 1 test (health endpoint schema)
-- **Frontend build**: TypeScript strict + Vite — 0 errors, ~832 kB bundle
+- **Frontend build**: TypeScript strict + Vite — 0 errors, ~1,003 kB bundle
 
 ## Conventions
 
@@ -467,3 +507,4 @@ XP is auto-synced from git commits via `mal_get_commit_activity`. To add new mem
 | Phase 11 | Project Management + Repos (5 MCP tools, per-project leaderboard, GitHub integration) | Done |
 | Phase 12 | Chat-First Architecture (all 47 tools via chat, interrupt/confirm for destructive ops, project inline editing) | Done |
 | Phase 13 | Code Review & Hardening (security fixes, async correctness, FTS auto-sync, on-premise/nube parity, UI fixes) | Done |
+| Phase 14 | MCP Server (4 tools: audit, bulk, retrospective) + Assistant (persistent memory, 2 agents) + Frontend (dark mode, Recharts, enhanced Kanban, Cmd+K, notifications, activity timeline, dependency tree) | Done |

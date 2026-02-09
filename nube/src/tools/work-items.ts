@@ -15,7 +15,7 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
     "mal_create_work_item",
     {
       title: "Create Work Item",
-      description: "Create a work item (task, story, bug, epic, or spike). Similar to creating a Jira ticket. Optionally assign to a sprint and team member.",
+      description: "Create a work item (task, story, bug, epic, or spike). Similar to creating a Jira ticket. Optionally assign to a sprint and team member. Use the work item description field for acceptance criteria, notes, or any custom information.",
       annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         id: z.string().describe("Unique work item ID (e.g. MAL-001)"),
@@ -162,7 +162,7 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
     "mal_update_work_item",
     {
       title: "Update Work Item",
-      description: "Update a work item's status, assignee, sprint, story points, or other fields. Use to move items across the Kanban board.",
+      description: "Update a work item's status, assignee, sprint, story points, or other fields. Use to move items across the Kanban board. Use labels for custom categorization (e.g. ['frontend', 'urgent', 'tech-debt']).",
       annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         id: z.string().describe("Work item ID to update"),
@@ -202,6 +202,75 @@ export function registerWorkItemTools(server: McpServer, db: IDatabase): void {
         };
       } catch (error) {
         return handleToolError(error, "mal_update_work_item");
+      }
+    }
+  );
+
+  // --- mal_bulk_update_work_items ---
+  server.registerTool(
+    "mal_bulk_update_work_items",
+    {
+      title: "Bulk Update Work Items",
+      description: "Batch-update up to 50 work items in one call. Apply the same field changes to multiple items at once. Useful for moving multiple items to a sprint, changing status in bulk, or reassigning work.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        ids: z.array(z.string()).min(1).max(50).describe("Array of work item IDs to update (max 50)"),
+        status: z.string().optional().describe("New status for all items: backlog, todo, in_progress, review, done, cancelled"),
+        priority: z.string().optional().describe("New priority for all items: critical, high, medium, low"),
+        sprint_id: z.string().optional().describe("Move all items to this sprint"),
+        assignee: z.string().optional().describe("Reassign all items to this team member"),
+        labels: z.array(z.string()).optional().describe("Set labels on all items"),
+      },
+    },
+    async (args) => {
+      try {
+        const { ids, ...updateFields } = args;
+
+        // Validate at least one update field is provided
+        const fieldKeys = Object.keys(updateFields).filter((k) => updateFields[k as keyof typeof updateFields] !== undefined);
+        if (fieldKeys.length === 0) {
+          return {
+            content: [{ type: "text" as const, text: "Error: No update fields provided. Try: Specify at least one field to update (status, priority, sprint_id, assignee, labels)." }],
+            isError: true,
+          };
+        }
+
+        const validated = WorkItemUpdateSchema.parse(updateFields);
+        const results: string[] = [];
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const id of ids) {
+          const existing = await db.get<WorkItem>(COLLECTIONS.WORK_ITEMS, id);
+          if (!existing) {
+            results.push(`- \`${id}\`: not found`);
+            failCount++;
+            continue;
+          }
+
+          const data = { ...validated };
+          // Auto-set completed_at when transitioning to done
+          if (data.status === "done" && existing.status !== "done") {
+            (data as Record<string, unknown>).completed_at = new Date().toISOString();
+          }
+
+          await db.update<WorkItem>(COLLECTIONS.WORK_ITEMS, id, data);
+          results.push(`- \`${id}\`: updated`);
+          successCount++;
+        }
+
+        const summary = [
+          `## Bulk Update Complete`,
+          "",
+          `**Updated**: ${successCount} | **Failed**: ${failCount} | **Total**: ${ids.length}`,
+          `**Fields changed**: ${fieldKeys.join(", ")}`,
+          "",
+          ...results,
+        ];
+
+        return { content: [{ type: "text" as const, text: summary.join("\n") }] };
+      } catch (error) {
+        return handleToolError(error, "mal_bulk_update_work_items");
       }
     }
   );

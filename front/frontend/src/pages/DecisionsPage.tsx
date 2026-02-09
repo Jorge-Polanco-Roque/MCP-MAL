@@ -115,10 +115,10 @@ export function DecisionsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <BookOpen className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">Decision Journal</h2>
+          <h2 className="text-lg font-semibold dark:text-gray-100">Decision Journal</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -162,11 +162,11 @@ export function DecisionsPage() {
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {/* Create form */}
         {showForm && (
-          <Card className="mb-4 border-mal-200 bg-mal-50/30">
+          <Card className="mb-4 border-mal-200 bg-mal-50/30 dark:border-mal-800 dark:bg-mal-900/20">
             <CardContent className="p-4">
               <form onSubmit={handleCreate} className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
                     Decision Title *
                   </label>
                   <input
@@ -174,24 +174,24 @@ export function DecisionsPage() {
                     placeholder="e.g., Use PostgreSQL for the menu database"
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
                     autoFocus
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
                     Rationale / Description
                   </label>
                   <textarea
                     placeholder="Why this decision was made, alternatives considered..."
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
                     rows={3}
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                  <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
                     Tags (comma-separated)
                   </label>
                   <input
@@ -199,7 +199,7 @@ export function DecisionsPage() {
                     placeholder="e.g., architecture, database, backend"
                     value={formTags}
                     onChange={(e) => setFormTags(e.target.value)}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
                   />
                 </div>
                 <div className="flex justify-end gap-2">
@@ -239,8 +239,8 @@ export function DecisionsPage() {
               className={cn(
                 "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 activeSearch === tag
-                  ? "border-mal-600 bg-mal-100 text-mal-700"
-                  : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                  ? "border-mal-600 bg-mal-100 text-mal-700 dark:border-mal-500 dark:bg-mal-900/40 dark:text-mal-300"
+                  : "border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
               )}
             >
               {tag}
@@ -257,7 +257,7 @@ export function DecisionsPage() {
               placeholder="Search decisions, action items, agreements..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border py-2 pl-9 pr-3 text-sm"
+              className="w-full rounded-md border py-2 pl-9 pr-3 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
             />
           </div>
           <Button type="submit" size="sm" disabled={!searchQuery.trim()}>
@@ -265,7 +265,7 @@ export function DecisionsPage() {
           </Button>
         </form>
 
-        <p className="mb-3 text-xs text-gray-500">
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
           Showing interactions matching: "{activeSearch}"
         </p>
 
@@ -273,7 +273,7 @@ export function DecisionsPage() {
         {entries.length > 0 ? (
           <div className="space-y-3">
             {entries.map((entry, i) => (
-              <Card key={i} className="transition-colors hover:bg-gray-50/50">
+              <Card key={i} className="transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-sm font-medium">
@@ -288,7 +288,7 @@ export function DecisionsPage() {
                 </CardHeader>
                 <CardContent className="pt-0">
                   {entry.summary && (
-                    <p className="mb-2 text-sm text-gray-600 line-clamp-2">
+                    <p className="mb-2 text-sm text-gray-600 line-clamp-2 dark:text-gray-300">
                       {entry.summary}
                     </p>
                   )}

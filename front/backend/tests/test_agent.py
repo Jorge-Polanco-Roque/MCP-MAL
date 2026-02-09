@@ -12,13 +12,15 @@ def mock_tool(query: str) -> str:
 
 def test_build_agent_creates_compiled_graph():
     """build_agent should return a compiled graph with nodes."""
+    from langgraph.checkpoint.memory import MemorySaver
+
     with patch("app.agent.graph.ChatOpenAI") as mock_llm_cls:
         mock_llm = MagicMock()
         mock_llm.bind_tools.return_value = mock_llm
         mock_llm_cls.return_value = mock_llm
 
         from app.agent.graph import build_agent
-        agent = build_agent([mock_tool])
+        agent = build_agent([mock_tool], checkpointer=MemorySaver())
         assert agent is not None
         # CompiledGraph has an invoke method
         assert hasattr(agent, "invoke")
@@ -42,10 +44,10 @@ def test_system_prompt_contains_tool_descriptions():
     assert "mal_get_project" in SYSTEM_PROMPT
 
 
-def test_system_prompt_has_47_tools():
-    """System prompt should reference 47 MCP tools."""
+def test_system_prompt_has_51_tools():
+    """System prompt should reference 51 MCP tools."""
     from app.agent.prompts import SYSTEM_PROMPT
-    assert "47 MCP tools" in SYSTEM_PROMPT
+    assert "51 MCP tools" in SYSTEM_PROMPT
 
 
 def test_system_prompt_has_capabilities_section():

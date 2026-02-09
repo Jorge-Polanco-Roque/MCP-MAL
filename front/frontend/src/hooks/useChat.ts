@@ -5,6 +5,16 @@ import { generateId } from "../lib/utils";
 import { useWebSocket } from "./useWebSocket";
 import { fetchProjectContext } from "../lib/api";
 
+function getOrCreateThreadId(): string {
+  const key = "mal-chat-thread-id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -12,6 +22,7 @@ export function useChat() {
   const [pendingConfirmation, setPendingConfirmation] = useState<ConfirmationPayload | null>(null);
   const currentAssistantRef = useRef<string | null>(null);
   const toolCallsRef = useRef<ToolCallInfo[]>([]);
+  const threadIdRef = useRef<string>(getOrCreateThreadId());
 
   const wsUrl =
     (window.location.protocol === "https:" ? "wss:" : "ws:") +
@@ -216,7 +227,7 @@ export function useChat() {
         }
       }
 
-      send(JSON.stringify({ message: content, history, context }));
+      send(JSON.stringify({ message: content, history, context, thread_id: threadIdRef.current }));
     },
     [send, messages, isStreaming, contextEnabled, pendingConfirmation]
   );
@@ -246,6 +257,10 @@ export function useChat() {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setPendingConfirmation(null);
+    // Generate a new thread_id for a fresh conversation
+    const newId = crypto.randomUUID();
+    threadIdRef.current = newId;
+    localStorage.setItem("mal-chat-thread-id", newId);
   }, []);
 
   const toggleContext = useCallback(() => {

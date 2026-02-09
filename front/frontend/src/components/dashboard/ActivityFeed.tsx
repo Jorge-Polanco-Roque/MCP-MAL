@@ -38,7 +38,7 @@ export function ActivityFeed() {
           {isLoading ? (
             <div className="space-y-3 py-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100" />
+                <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-700/60" />
               ))}
             </div>
           ) : (
@@ -48,7 +48,7 @@ export function ActivityFeed() {
                   <h4 className="mb-1 text-xs font-semibold uppercase text-gray-400">
                     Top Contributors
                   </h4>
-                  <div className="prose prose-sm max-w-none prose-p:my-0.5 prose-table:text-xs">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-0.5 prose-table:text-xs">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {topContributors}
                     </ReactMarkdown>
@@ -61,7 +61,7 @@ export function ActivityFeed() {
                   <h4 className="mb-1 text-xs font-semibold uppercase text-gray-400">
                     Recent Interactions
                   </h4>
-                  <div className="prose prose-sm max-w-none prose-p:my-0.5 prose-table:text-xs">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-0.5 prose-table:text-xs">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {interactions}
                     </ReactMarkdown>

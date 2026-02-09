@@ -25,11 +25,11 @@ import { cn } from "@/lib/utils";
 import type { Project, ProjectStatus } from "@/lib/types";
 
 const STATUS_STYLES: Record<ProjectStatus, string> = {
-  planning: "bg-blue-100 text-blue-700",
-  active: "bg-green-100 text-green-700",
-  paused: "bg-yellow-100 text-yellow-700",
-  completed: "bg-gray-100 text-gray-500",
-  archived: "bg-gray-100 text-gray-400",
+  planning: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  active: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  paused: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  completed: "bg-gray-100 text-gray-500 dark:bg-gray-700/40 dark:text-gray-400",
+  archived: "bg-gray-100 text-gray-400 dark:bg-gray-700/30 dark:text-gray-500",
 };
 
 const COLOR_DOT: Record<string, string> = {
@@ -81,10 +81,10 @@ export function ProjectsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <FolderKanban className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">Projects</h2>
+          <h2 className="text-lg font-semibold dark:text-gray-100">Projects</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -130,7 +130,7 @@ export function ProjectsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border px-2 py-1.5 text-sm"
+            className="rounded-md border px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             <option value="">All statuses</option>
             {STATUS_OPTIONS.map((s) => (
@@ -142,7 +142,7 @@ export function ProjectsPage() {
           {statusFilter && (
             <button
               onClick={() => setStatusFilter("")}
-              className="text-xs text-mal-600 hover:underline"
+              className="text-xs text-mal-600 hover:underline dark:text-mal-400"
             >
               Clear
             </button>
@@ -155,14 +155,14 @@ export function ProjectsPage() {
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="h-32 animate-pulse rounded-lg bg-gray-200"
+                className="h-32 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700"
               />
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400">
+          <div className="flex flex-col items-center justify-center py-20 text-center text-gray-400 dark:text-gray-500">
             <FolderKanban className="mb-4 h-16 w-16" />
-            <p className="text-lg font-medium">No projects yet</p>
+            <p className="text-lg font-medium dark:text-gray-300">No projects yet</p>
             <p className="mt-2 text-sm">
               Create your first project to organize sprints and work items.
             </p>
@@ -263,7 +263,7 @@ function ProjectCard({
             )}
           />
           <h3
-            className="flex-1 cursor-pointer truncate font-semibold hover:text-mal-600"
+            className="flex-1 cursor-pointer truncate font-semibold hover:text-mal-600 dark:text-gray-100 dark:hover:text-mal-400"
             onClick={onSelect}
           >
             {project.name}
@@ -291,7 +291,7 @@ function ProjectCard({
 
           {/* Menu button */}
           <button
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu(!showMenu);
@@ -305,7 +305,7 @@ function ProjectCard({
         {/* Description */}
         {project.description && (
           <p
-            className="mb-2 cursor-pointer line-clamp-2 text-sm text-gray-600"
+            className="mb-2 cursor-pointer line-clamp-2 text-sm text-gray-600 dark:text-gray-300"
             onClick={onSelect}
           >
             {project.description}
@@ -314,8 +314,8 @@ function ProjectCard({
 
         {/* Repo URL */}
         {(project.metadata?.repo_url as string | undefined) && (
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] text-gray-500">
-            <GitBranch className="h-3 w-3 shrink-0 text-gray-400" />
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+            <GitBranch className="h-3 w-3 shrink-0 text-gray-400 dark:text-gray-500" />
             <span className="truncate font-mono">
               {(project.metadata!.repo_url as string)
                 .replace("https://github.com/", "")
@@ -326,7 +326,7 @@ function ProjectCard({
 
         {/* Footer */}
         <div
-          className="flex cursor-pointer items-center justify-between text-xs text-gray-400"
+          className="flex cursor-pointer items-center justify-between text-xs text-gray-400 dark:text-gray-500"
           onClick={onSelect}
         >
           {project.owner_id && <span>Owner: {project.owner_id}</span>}
@@ -336,13 +336,13 @@ function ProjectCard({
         {/* Dropdown menu */}
         {showMenu && (
           <div
-            className="absolute right-2 top-12 z-10 w-48 rounded-md border bg-white py-1 shadow-lg"
+            className="absolute right-2 top-12 z-10 w-48 rounded-md border bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800"
             onClick={(e) => e.stopPropagation()}
           >
             {!confirmDelete ? (
               <>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
                   onClick={() => {
                     setEditing(true);
                     setShowMenu(false);
@@ -352,7 +352,7 @@ function ProjectCard({
                   Edit project
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                   onClick={() => setConfirmDelete(true)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -361,7 +361,7 @@ function ProjectCard({
               </>
             ) : (
               <div className="px-3 py-2">
-                <p className="mb-2 text-xs font-medium text-gray-700">
+                <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-200">
                   Delete "{project.name}"?
                 </p>
                 <div className="flex flex-col gap-1">
@@ -375,14 +375,14 @@ function ProjectCard({
                       : "Delete with sprints & items"}
                   </button>
                   <button
-                    className="rounded border px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                    className="rounded border px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                     onClick={() => handleDelete(false)}
                     disabled={deleteMutation.isPending}
                   >
                     Delete project only
                   </button>
                   <button
-                    className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600"
+                    className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                     onClick={() => {
                       setConfirmDelete(false);
                       setShowMenu(false);
@@ -452,8 +452,8 @@ function EditProjectForm({
   return (
     <form onSubmit={handleSubmit} className="p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Edit Project</h3>
-        <span className="font-mono text-xs text-gray-400">{project.id}</span>
+        <h3 className="text-sm font-semibold dark:text-gray-100">Edit Project</h3>
+        <span className="font-mono text-xs text-gray-400 dark:text-gray-500">{project.id}</span>
       </div>
       <div className="space-y-3">
         <input
@@ -461,7 +461,7 @@ function EditProjectForm({
           placeholder="Project name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
+          className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
           required
           autoFocus
         />
@@ -469,7 +469,7 @@ function EditProjectForm({
           placeholder="Description (optional)"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm"
+          className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
           rows={2}
         />
         <input
@@ -477,13 +477,13 @@ function EditProjectForm({
           placeholder="Repository URL (e.g. https://github.com/org/repo/tree/dev)"
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm font-mono"
+          className="w-full rounded-md border px-3 py-2 text-sm font-mono dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
         />
         <div className="grid grid-cols-2 gap-3">
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-            className="rounded-md border px-3 py-2 text-sm"
+            className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -496,11 +496,11 @@ function EditProjectForm({
             placeholder="Owner ID (e.g. jorge)"
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
-            className="rounded-md border px-3 py-2 text-sm"
+            className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Color:</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">Color:</span>
           {COLOR_OPTIONS.map((c) => (
             <button
               key={c}
@@ -508,7 +508,7 @@ function EditProjectForm({
               onClick={() => setColor(c)}
               className={cn(
                 "h-6 w-6 rounded-full border-2 transition-all",
-                color === c ? "border-gray-900 scale-110" : "border-transparent"
+                color === c ? "border-gray-900 dark:border-gray-100 scale-110" : "border-transparent"
               )}
               title={c}
             >
@@ -578,9 +578,9 @@ function CreateProjectForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-6 rounded-lg border border-mal-200 bg-mal-50/30 p-4 shadow-sm"
+      className="mb-6 rounded-lg border border-mal-200 bg-mal-50/30 p-4 shadow-sm dark:border-mal-800 dark:bg-mal-900/20"
     >
-      <h3 className="mb-3 text-sm font-semibold">New Project</h3>
+      <h3 className="mb-3 text-sm font-semibold dark:text-gray-100">New Project</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <input
@@ -588,12 +588,12 @@ function CreateProjectForm({
             placeholder="Project name (e.g. Bella Italia)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
             required
             autoFocus
           />
           {name.trim() && (
-            <p className="mt-1 text-[10px] text-gray-400">
+            <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
               ID: <span className="font-mono">{slugify(name)}</span>
             </p>
           )}
@@ -601,7 +601,7 @@ function CreateProjectForm({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
         >
           <option value="planning">Planning</option>
           <option value="active">Active</option>
@@ -609,7 +609,7 @@ function CreateProjectForm({
           <option value="completed">Completed</option>
         </select>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Color:</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">Color:</span>
           {COLOR_OPTIONS.map((c) => (
             <button
               key={c}
@@ -617,7 +617,7 @@ function CreateProjectForm({
               onClick={() => setColor(c)}
               className={cn(
                 "h-6 w-6 rounded-full border-2 transition-all",
-                color === c ? "border-gray-900 scale-110" : "border-transparent"
+                color === c ? "border-gray-900 dark:border-gray-100 scale-110" : "border-transparent"
               )}
               title={c}
             >
@@ -636,7 +636,7 @@ function CreateProjectForm({
             placeholder="Repository URL (optional, e.g. https://github.com/org/repo/tree/dev)"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm font-mono"
+            className="w-full rounded-md border px-3 py-2 text-sm font-mono dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
           />
         </div>
         <div className="sm:col-span-2">
@@ -644,7 +644,7 @@ function CreateProjectForm({
             placeholder="Description (optional)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm"
+            className="w-full rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
             rows={2}
           />
         </div>

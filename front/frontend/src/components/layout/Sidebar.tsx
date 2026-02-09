@@ -57,18 +57,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex flex-col border-r bg-gray-50 transition-all duration-200",
+        "flex flex-col border-r bg-gray-50 transition-all duration-200 dark:border-gray-700 dark:bg-gray-900",
         collapsed ? "w-16" : "w-52"
       )}
     >
       {/* Project selector (only when expanded) */}
       {!collapsed && (
-        <div className="border-b px-2 py-3">
+        <div className="border-b px-2 py-3 dark:border-gray-700">
           <div className="relative">
             <button
               type="button"
               onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-100"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               {activeProject ? (
                 <>
@@ -94,7 +94,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </button>
 
             {dropdownOpen && (
-              <div className="absolute left-0 z-30 mt-1 w-full rounded-md border bg-white shadow-lg">
+              <div className="absolute left-0 z-30 mt-1 w-full rounded-md border bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
                 <button
                   type="button"
                   onClick={() => {
@@ -102,14 +102,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     setDropdownOpen(false);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
-                    !activeProjectId && "bg-mal-50 font-medium"
+                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700",
+                    !activeProjectId && "bg-mal-50 font-medium dark:bg-mal-900/30"
                   )}
                 >
                   <Circle className="h-3 w-3 text-gray-300" />
                   All Projects
                 </button>
-                <div className="border-t" />
+                <div className="border-t dark:border-gray-600" />
                 {projects.map((p) => (
                   <button
                     key={p.id}
@@ -119,8 +119,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                       setDropdownOpen(false);
                     }}
                     className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
-                      p.id === activeProjectId && "bg-mal-50 font-medium"
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700",
+                      p.id === activeProjectId && "bg-mal-50 font-medium dark:bg-mal-900/30"
                     )}
                   >
                     <Circle
@@ -136,14 +136,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 {projects.length === 0 && !isLoading && (
                   <p className="px-3 py-2 text-center text-xs text-gray-400">No projects yet</p>
                 )}
-                <div className="border-t" />
+                <div className="border-t dark:border-gray-600" />
                 <button
                   type="button"
                   onClick={() => {
                     setDropdownOpen(false);
                     navigate("/projects");
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-mal-600 hover:bg-gray-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-mal-600 hover:bg-gray-50 dark:text-mal-400 dark:hover:bg-gray-700"
                 >
                   + New Project
                 </button>
@@ -163,8 +163,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-mal-100 text-mal-700"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? "bg-mal-100 text-mal-700 dark:bg-mal-900/30 dark:text-mal-400"
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
               )
             }
             title={collapsed ? label : undefined}
@@ -177,7 +177,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       <button
         onClick={onToggle}
-        className="flex items-center justify-center border-t p-3 text-gray-400 hover:text-gray-600"
+        className="flex items-center justify-center border-t p-3 text-gray-400 hover:text-gray-600 dark:border-gray-700 dark:hover:text-gray-300"
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         {collapsed ? (

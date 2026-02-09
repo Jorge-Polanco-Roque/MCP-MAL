@@ -51,7 +51,7 @@ export function MessageBubble({ message, isStreaming, onConfirmResponse }: Messa
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-mal-600 text-white" : "bg-gray-200 text-gray-600"
+          isUser ? "bg-mal-600 text-white" : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
         )}
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
@@ -64,13 +64,13 @@ export function MessageBubble({ message, isStreaming, onConfirmResponse }: Messa
               "rounded-xl px-4 py-2.5",
               isUser
                 ? "bg-mal-600 text-white"
-                : "bg-white border border-gray-200 text-gray-800"
+                : "bg-white border border-gray-200 text-gray-800 dark:bg-gray-800 dark:border-gray-600/40 dark:text-gray-100"
             )}
           >
             {isUser ? (
               <p className="whitespace-pre-wrap">{message.content}</p>
             ) : (
-              <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
+              <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {processedContent}
                 </ReactMarkdown>

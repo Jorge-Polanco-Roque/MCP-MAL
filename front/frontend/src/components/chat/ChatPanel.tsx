@@ -31,9 +31,9 @@ export function ChatPanel() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-mal-600" />
+          <MessageSquare className="h-5 w-5 text-mal-600 dark:text-mal-400" />
           <h2 className="font-semibold">Chat</h2>
         </div>
         <div className="flex items-center gap-2">
@@ -42,8 +42,8 @@ export function ChatPanel() {
             className={cn(
               "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
               contextEnabled
-                ? "bg-yellow-100 text-yellow-700"
-                : "text-gray-400 hover:text-gray-600"
+                ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                : "text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
             )}
             title={
               contextEnabled
@@ -83,13 +83,13 @@ export function ChatPanel() {
       {/* Messages */}
       <ScrollArea className="flex-1 px-4" ref={scrollRef}>
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center py-20 text-center text-gray-400">
+          <div className="flex h-full flex-col items-center justify-center py-20 text-center text-gray-500 dark:text-gray-400">
             <MessageSquare className="mb-4 h-12 w-12" />
-            <p className="text-lg font-medium">Welcome to MAL MCP Hub</p>
-            <p className="mt-1 text-sm">
+            <p className="text-lg font-medium text-gray-600 dark:text-gray-200">Welcome to MAL MCP Hub</p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Ask me to create projects, manage sprints, track work items, or anything in the catalog.
             </p>
-            <div className="mt-6 space-y-2 text-xs text-gray-400">
+            <div className="mt-6 space-y-2 text-xs text-gray-500 dark:text-gray-400">
               <p>"Crea un proyecto llamado Mi App con repo https://github.com/org/repo"</p>
               <p>"Crea el sprint sprint-2026-w09 del 17 al 28 de febrero"</p>
               <p>"Mueve MAL-042 a review"</p>
@@ -97,7 +97,7 @@ export function ChatPanel() {
               <p>"Borra el skill docker-compose-patterns"</p>
             </div>
             {contextEnabled && (
-              <p className="mt-4 rounded-md bg-yellow-50 px-3 py-1.5 text-xs text-yellow-700">
+              <p className="mt-4 rounded-md bg-yellow-50 px-3 py-1.5 text-xs text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
                 Context mode enabled — project state will be injected automatically
               </p>
             )}

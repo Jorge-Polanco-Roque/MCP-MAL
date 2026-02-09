@@ -4,10 +4,17 @@ import { cn } from "@/lib/utils";
 import type { BoardItem } from "@/lib/types";
 
 const PRIORITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-700",
-  high: "bg-orange-100 text-orange-700",
-  medium: "bg-blue-100 text-blue-700",
-  low: "bg-gray-100 text-gray-500",
+  critical: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  high: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  medium: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  low: "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400",
+};
+
+const PRIORITY_BORDER: Record<string, string> = {
+  critical: "border-l-red-500",
+  high: "border-l-orange-500",
+  medium: "border-l-blue-500",
+  low: "border-l-gray-300 dark:border-l-gray-600",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -44,22 +51,23 @@ export function WorkItemCard({ item }: WorkItemCardProps) {
       {...attributes}
       {...listeners}
       className={cn(
-        "cursor-grab rounded-lg border bg-white p-3 shadow-sm transition-shadow hover:shadow-md",
+        "cursor-grab rounded-lg border border-l-[3px] bg-white p-3 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800",
+        PRIORITY_BORDER[item.priority] ?? PRIORITY_BORDER.medium,
         isDragging && "z-50 rotate-2 shadow-lg opacity-90"
       )}
     >
       {/* Header: ID + type */}
       <div className="mb-1.5 flex items-center gap-1.5">
-        <span className="text-[10px] font-mono text-gray-400">{item.id}</span>
+        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{item.id}</span>
         {item.type && (
-          <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium text-gray-500">
+          <span className="rounded bg-gray-100 px-1 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
             {TYPE_LABELS[item.type] ?? item.type}
           </span>
         )}
       </div>
 
       {/* Title */}
-      <p className="mb-2 text-sm font-medium leading-snug text-gray-900">
+      <p className="mb-2 text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">
         {item.title || "(untitled)"}
       </p>
 
@@ -76,7 +84,7 @@ export function WorkItemCard({ item }: WorkItemCardProps) {
 
         {item.assignee && (
           <span
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-mal-100 text-[10px] font-bold text-mal-700"
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-mal-100 text-[10px] font-bold text-mal-700 dark:bg-mal-900/40 dark:text-mal-300"
             title={item.assignee}
           >
             {item.assignee.charAt(0).toUpperCase()}

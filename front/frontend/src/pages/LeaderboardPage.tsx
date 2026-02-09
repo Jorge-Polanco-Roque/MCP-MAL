@@ -54,12 +54,12 @@ export function LeaderboardPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <Trophy className="h-5 w-5 text-yellow-500" />
-          <h2 className="text-lg font-semibold">Leaderboard</h2>
+          <h2 className="text-lg font-semibold dark:text-gray-100">Leaderboard</h2>
           {activeProject && (
-            <span className="rounded-full bg-mal-100 px-2 py-0.5 text-xs font-medium text-mal-700">
+            <span className="rounded-full bg-mal-100 px-2 py-0.5 text-xs font-medium text-mal-700 dark:bg-mal-900/30 dark:text-mal-400">
               {activeProject.name}
             </span>
           )}
@@ -78,8 +78,8 @@ export function LeaderboardPage() {
 
       <div className="flex-1 overflow-auto p-4 sm:p-6">
         {/* Repo info bar */}
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-          <GitBranch className="h-3.5 w-3.5 text-gray-400" />
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-300">
+          <GitBranch className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
           {repoUrl ? (
             <>
               <span className="font-medium">Source:</span>
@@ -87,22 +87,22 @@ export function LeaderboardPage() {
                 href={repoUrl.split("/tree/")[0]}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="truncate font-mono text-mal-600 hover:underline"
+                className="truncate font-mono text-mal-600 hover:underline dark:text-mal-400"
               >
                 {repoUrl.split("/tree/")[0].replace("https://github.com/", "")}
                 <ExternalLink className="ml-1 inline h-3 w-3" />
               </a>
               {repoUrl.includes("/tree/") && (
                 <>
-                  <span className="text-gray-400">|</span>
-                  <span className="text-gray-500">
+                  <span className="text-gray-400 dark:text-gray-500">|</span>
+                  <span className="text-gray-500 dark:text-gray-400">
                     Branch: <strong>{repoUrl.split("/tree/")[1]}</strong>
                   </span>
                 </>
               )}
             </>
           ) : (
-            <span className="text-gray-500">
+            <span className="text-gray-500 dark:text-gray-400">
               No repository configured. Set a <strong>repo_url</strong> in project metadata to enable commit sync.
             </span>
           )}
@@ -116,7 +116,7 @@ export function LeaderboardPage() {
             <CardContent className="overflow-x-auto p-0">
               <table className="w-full min-w-[500px]">
                 <thead>
-                  <tr className="border-b bg-gray-50 text-left text-xs font-semibold text-gray-600">
+                  <tr className="border-b bg-gray-50 text-left text-xs font-semibold text-gray-600 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-300">
                     <th className="px-3 py-3 w-12 sm:px-4">Rank</th>
                     <th className="px-3 py-3 sm:px-4">Member</th>
                     <th className="px-3 py-3 text-center sm:px-4">Level</th>
@@ -132,7 +132,7 @@ export function LeaderboardPage() {
                     return (
                       <tr
                         key={entry.name}
-                        className="border-b transition-colors hover:bg-gray-50 cursor-pointer"
+                        className="border-b transition-colors hover:bg-gray-50 cursor-pointer dark:border-gray-700 dark:hover:bg-gray-700/40"
                         onClick={() => {
                           if (entry.id) navigate(`/profile/${entry.id}`);
                         }}
@@ -141,12 +141,12 @@ export function LeaderboardPage() {
                           {rankMedal(rank)}
                         </td>
                         <td className="px-3 py-3 sm:px-4">
-                          <span className="font-medium text-gray-900">{entry.name}</span>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{entry.name}</span>
                         </td>
                         <td className="px-3 py-3 text-center sm:px-4">
                           <LevelBadge level={entry.level} size="sm" />
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-sm sm:px-4">
+                        <td className="px-3 py-3 text-right font-mono text-sm dark:text-gray-200 sm:px-4">
                           {entry.xp.toLocaleString()}
                         </td>
                         <td className="hidden px-4 py-3 text-center sm:table-cell">

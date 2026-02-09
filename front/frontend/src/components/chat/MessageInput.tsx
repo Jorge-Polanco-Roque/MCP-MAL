@@ -36,10 +36,10 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
   };
 
   return (
-    <div className="flex items-end gap-2 border-t bg-white p-4">
+    <div className="flex items-end gap-2 border-t bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <textarea
         ref={textareaRef}
-        className="flex-1 resize-none rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-mal-500 focus:outline-none focus:ring-1 focus:ring-mal-500"
+        className="flex-1 resize-none rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm focus:border-mal-500 focus:outline-none focus:ring-1 focus:ring-mal-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500"
         placeholder="Type a message..."
         rows={1}
         value={value}

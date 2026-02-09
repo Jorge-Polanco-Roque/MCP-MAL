@@ -42,10 +42,10 @@ import type {
 const BOARD_STATUSES: BoardStatus[] = ["todo", "in_progress", "review", "done"];
 
 const SPRINT_STATUS_STYLES: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
-  planned: "bg-blue-100 text-blue-700",
-  completed: "bg-gray-100 text-gray-500",
-  cancelled: "bg-red-100 text-red-500",
+  active: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  planned: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  completed: "bg-gray-100 text-gray-500 dark:bg-gray-700/40 dark:text-gray-400",
+  cancelled: "bg-red-100 text-red-500 dark:bg-red-900/40 dark:text-red-400",
 };
 
 export function SprintsPage() {
@@ -208,13 +208,13 @@ export function SprintsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between border-b px-4 py-3 dark:border-gray-700 sm:px-6 sm:py-4">
         <div className="flex items-center gap-3">
           <LayoutGrid className="h-5 w-5 text-mal-600" />
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-lg font-semibold dark:text-gray-100">
             Sprint Board
             {activeProject && (
-              <span className="ml-2 text-sm font-normal text-gray-500">
+              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {activeProject.name}
               </span>
             )}
@@ -281,7 +281,7 @@ export function SprintsPage() {
         {/* Sprint selector */}
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-700">Sprint</h3>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200">Sprint</h3>
             <Button
               variant="ghost"
               size="sm"
@@ -301,7 +301,7 @@ export function SprintsPage() {
           </div>
 
           {sprintsList.isLoading ? (
-            <div className="h-10 w-64 animate-pulse rounded-md bg-gray-200" />
+            <div className="h-10 w-64 animate-pulse rounded-md bg-gray-200 dark:bg-gray-700" />
           ) : sprintsList.error ? (
             <p className="text-xs text-red-500">Failed to load sprints</p>
           ) : (
@@ -310,7 +310,7 @@ export function SprintsPage() {
               <button
                 type="button"
                 onClick={() => setSprintDropdown(!sprintDropdown)}
-                className="flex w-full max-w-md items-center justify-between rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50"
+                className="flex w-full max-w-md items-center justify-between rounded-md border bg-white px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
               >
                 {selectedSprint ? (
                   <span className="flex items-center gap-2">
@@ -338,7 +338,7 @@ export function SprintsPage() {
 
               {/* Dropdown menu */}
               {sprintDropdown && (
-                <div className="absolute z-20 mt-1 w-full max-w-md rounded-md border bg-white shadow-lg">
+                <div className="absolute z-20 mt-1 w-full max-w-md rounded-md border bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
                   {/* "All" option */}
                   <button
                     type="button"
@@ -347,13 +347,13 @@ export function SprintsPage() {
                       setSprintDropdown(false);
                     }}
                     className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
-                      !activeSprint && "bg-mal-50 font-medium"
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700",
+                      !activeSprint && "bg-mal-50 font-medium dark:bg-mal-900/30"
                     )}
                   >
                     All sprints
                   </button>
-                  <div className="border-t" />
+                  <div className="border-t dark:border-gray-600" />
                   {(sprintsList.data?.items ?? []).map((sprint) => (
                     <SprintDropdownItem
                       key={sprint.id}
@@ -377,23 +377,23 @@ export function SprintsPage() {
 
           {/* Selected sprint summary */}
           {selectedSprint && (
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
               {selectedSprint.goal && (
                 <span>
-                  Goal: <span className="text-gray-700">{selectedSprint.goal}</span>
+                  Goal: <span className="text-gray-700 dark:text-gray-200">{selectedSprint.goal}</span>
                 </span>
               )}
               {selectedSprint.team_capacity && (
                 <span>
                   Capacity:{" "}
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
                     {selectedSprint.team_capacity} pts
                   </span>
                 </span>
               )}
               <span>
                 Items:{" "}
-                <span className="font-medium text-gray-700">
+                <span className="font-medium text-gray-700 dark:text-gray-200">
                   {board.data?.total ?? "..."}
                 </span>
               </span>
@@ -403,7 +403,7 @@ export function SprintsPage() {
 
         {/* Kanban board with DnD */}
         <div className="mb-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-700">
+          <h3 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-200">
             Work Items by Status
             {board.data ? ` (${board.data.total})` : ""}
           </h3>
@@ -411,11 +411,11 @@ export function SprintsPage() {
           {board.isLoading ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {BOARD_STATUSES.map((s) => (
-                <div key={s} className="rounded-lg border bg-gray-50 p-4">
-                  <div className="mb-4 h-4 w-20 animate-pulse rounded bg-gray-200" />
+                <div key={s} className="rounded-lg border bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-800/60">
+                  <div className="mb-4 h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                   <div className="space-y-2">
-                    <div className="h-16 animate-pulse rounded bg-gray-200" />
-                    <div className="h-16 animate-pulse rounded bg-gray-200" />
+                    <div className="h-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                    <div className="h-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                   </div>
                 </div>
               ))}
@@ -469,20 +469,20 @@ function SprintDropdownItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50",
-        isSelected && "bg-mal-50 font-medium"
+        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:text-gray-100 dark:hover:bg-gray-700",
+        isSelected && "bg-mal-50 font-medium dark:bg-mal-900/30"
       )}
     >
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          SPRINT_STATUS_STYLES[sprint.status] ?? "bg-gray-100 text-gray-500"
+          SPRINT_STATUS_STYLES[sprint.status] ?? "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
         )}
       >
         {sprint.status}
       </span>
       <span className="flex-1 truncate">{sprint.name}</span>
-      <span className="text-[10px] text-gray-400">
+      <span className="text-[10px] text-gray-400 dark:text-gray-500">
         {sprint.start_date} → {sprint.end_date}
       </span>
     </button>
@@ -550,9 +550,9 @@ function CreateSprintForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-6 rounded-lg border border-blue-200 bg-blue-50/30 p-4 shadow-sm"
+      className="mb-6 rounded-lg border border-blue-200 bg-blue-50/30 p-4 shadow-sm dark:border-blue-800 dark:bg-blue-900/20"
     >
-      <h3 className="mb-3 text-sm font-semibold">New Sprint</h3>
+      <h3 className="mb-3 text-sm font-semibold dark:text-gray-100">New Sprint</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* ID */}
         <input
@@ -560,7 +560,7 @@ function CreateSprintForm({
           placeholder="ID (e.g. sprint-2026-w07)"
           value={id}
           onChange={(e) => setId(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm font-mono"
+          className="rounded-md border px-3 py-2 text-sm font-mono dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
           required
         />
         {/* Name */}
@@ -587,7 +587,7 @@ function CreateSprintForm({
         </div>
         {/* Start */}
         <div>
-          <label className="mb-1 block text-[10px] font-medium text-gray-500">
+          <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
             Start date
           </label>
           <input
@@ -600,7 +600,7 @@ function CreateSprintForm({
         </div>
         {/* End */}
         <div>
-          <label className="mb-1 block text-[10px] font-medium text-gray-500">
+          <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
             End date
           </label>
           <input
@@ -615,7 +615,7 @@ function CreateSprintForm({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
         >
           <option value="planned">Planned</option>
           <option value="active">Active</option>
@@ -624,7 +624,7 @@ function CreateSprintForm({
         </select>
         {/* Capacity */}
         <div>
-          <label className="mb-1 block text-[10px] font-medium text-gray-500">
+          <label className="mb-1 block text-[10px] font-medium text-gray-500 dark:text-gray-400">
             Capacity (pts)
           </label>
           <input
@@ -708,16 +708,16 @@ function CreateBoardItemForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mb-6 rounded-lg border bg-white p-4 shadow-sm"
+      className="mb-6 rounded-lg border bg-white p-4 shadow-sm dark:border-gray-600 dark:bg-gray-800"
     >
-      <h3 className="mb-3 text-sm font-semibold">New Work Item</h3>
+      <h3 className="mb-3 text-sm font-semibold dark:text-gray-100">New Work Item</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input
           type="text"
           placeholder="ID (e.g. BI-016)"
           value={id}
           onChange={(e) => setId(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm font-mono"
+          className="rounded-md border px-3 py-2 text-sm font-mono dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
           required
         />
         <div className="sm:col-span-1 lg:col-span-3">
@@ -743,7 +743,7 @@ function CreateBoardItemForm({
         <select
           value={type}
           onChange={(e) => setType(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
         >
           <option value="task">Task</option>
           <option value="story">Story</option>
@@ -754,7 +754,7 @@ function CreateBoardItemForm({
         <select
           value={priority}
           onChange={(e) => setPriority(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
         >
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -764,7 +764,7 @@ function CreateBoardItemForm({
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
         >
           <option value="todo">To Do</option>
           <option value="in_progress">In Progress</option>
@@ -778,7 +778,7 @@ function CreateBoardItemForm({
           max="21"
           value={storyPoints}
           onChange={(e) => setStoryPoints(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
           placeholder="Story Points"
         />
         <input
@@ -786,7 +786,7 @@ function CreateBoardItemForm({
           placeholder="Assignee (e.g. jorge)"
           value={assignee}
           onChange={(e) => setAssignee(e.target.value)}
-          className="rounded-md border px-3 py-2 text-sm"
+          className="rounded-md border px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500"
         />
       </div>
       <div className="mt-3 flex gap-2">

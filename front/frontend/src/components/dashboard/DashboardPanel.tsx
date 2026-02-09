@@ -10,8 +10,8 @@ export function DashboardPanel() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <LayoutDashboard className="h-5 w-5 text-mal-600" />
+      <div className="flex items-center gap-2 border-b px-4 py-3 dark:border-gray-700">
+        <LayoutDashboard className="h-5 w-5 text-mal-600 dark:text-mal-400" />
         <h2 className="font-semibold">Dashboard</h2>
       </div>
 

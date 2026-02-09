@@ -19,9 +19,9 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
         : "secondary";
 
   return (
-    <div className="my-2 rounded-md border border-gray-200 bg-gray-50 text-sm">
+    <div className="my-2 rounded-md border border-gray-200 bg-gray-50 text-sm dark:border-gray-600/40 dark:bg-gray-800/60">
       <button
-        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700/50"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
@@ -40,19 +40,19 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-200 px-3 py-2 space-y-2">
+        <div className="border-t border-gray-200 px-3 py-2 space-y-2 dark:border-gray-600/40">
           {Object.keys(toolCall.arguments).length > 0 && (
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Arguments</p>
-              <pre className="rounded bg-white p-2 text-xs text-gray-700 overflow-x-auto border">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Arguments</p>
+              <pre className="rounded bg-white p-2 text-xs text-gray-700 overflow-x-auto border dark:bg-gray-900 dark:text-gray-300 dark:border-gray-600/40">
                 {JSON.stringify(toolCall.arguments, null, 2)}
               </pre>
             </div>
           )}
           {toolCall.result && (
             <div>
-              <p className="text-xs font-medium text-gray-500 mb-1">Result</p>
-              <pre className="rounded bg-white p-2 text-xs text-gray-700 overflow-x-auto border max-h-48 overflow-y-auto">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Result</p>
+              <pre className="rounded bg-white p-2 text-xs text-gray-700 overflow-x-auto border max-h-48 overflow-y-auto dark:bg-gray-900 dark:text-gray-300 dark:border-gray-600/40">
                 {toolCall.result}
               </pre>
             </div>
