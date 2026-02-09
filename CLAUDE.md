@@ -58,10 +58,10 @@ v001/
 │   ├── data/
 │   │   ├── schema.sql            ← SQLite DDL (14 tables + FTS5)
 │   │   └── assets/               ← catalog content (tracked in git)
-│   │       ├── skills/           ← 22 SKILL.md files (14 original + 8 community-adapted)
+│   │       ├── skills/           ← 141 SKILL.md files (23 seeded + 109 from Composio + 9 custom)
 │   │       ├── commands/         ← 14 command .md files
 │   │       ├── mcps/             ← 6 MCP config .md files
-│   │       ├── subagents/        ← 5 subagent .md files
+│   │       ├── subagents/        ← 135 subagent .md files (17 seeded + 116 from VoltAgent + 2 custom)
 │   │       └── achievements/     ← README.md with all 14 achievements
 │   ├── src/
 │   │   ├── index.ts              ← entry point (SQLite + Filesystem + Dotenv)
@@ -207,7 +207,7 @@ npm run start:http         # HTTP on localhost:3000
 npm test                   # vitest run  (10 tests, all passing)
 npm run lint               # eslint src/
 npm run seed               # Load initial catalog data (runs automatically in setup)
-npm run seed:full          # Full catalog seed (22 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements)
+npm run seed:full          # Full catalog seed (23 skills, 14 commands, 17 subagents, 6 MCPs, 14 achievements)
 npm run inspect            # MCP Inspector
 ```
 
@@ -1044,11 +1044,19 @@ Dev: `typescript`, `tsx`, `@types/node`, `@types/express`, `@types/cors`, `vites
 
 60. **Dark mode contrast across all pages** (fixed) — Initial dark mode pass left many elements with poor contrast: `<select>` filter elements were invisible, form inputs had no dark background, status badges used light-only colors, dropdown menus stayed white, and text colors lacked dark counterparts. Fixed across 7 pages (ProjectsPage, BacklogPage, NextStepsPage, InteractionsPage, LeaderboardPage, SprintsPage, DecisionsPage) and 1 component (WorkItemCard). Consistent patterns applied: form elements get `dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500`, status badges get `dark:bg-{color}-900/40 dark:text-{color}-300`, containers get `dark:bg-gray-800`, headers `dark:border-gray-700`, titles `dark:text-gray-100`.
 
-61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (22 skills, 14 commands, 5 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
+61. **`npm run setup` now auto-seeds catalog** (enhancement) — `scripts/setup-local.sh` now runs `seed-full-catalog.ts` automatically after build. New developers get the full catalog (23 skills, 14 commands, 17 subagents, 6 MCPs, 14 achievements, 1 project) with a single `npm run setup`. The seed uses `INSERT OR IGNORE` so running setup multiple times is safe — no duplicates.
 
 62. **Catalog assets exported to repo** (enhancement) — All catalog content previously embedded only in `seed-full-catalog.ts` (and the SQLite DB at runtime) is now exported as standalone markdown files in `on-premise/data/assets/`. This makes the full catalog browsable on GitHub without running the seed or the server. New directories: `commands/` (14 files), `mcps/` (6 files), `subagents/` (5 files), `achievements/` (1 README). The `skills/` directory (14+ SKILL.md files) was already on disk but git-ignored — now tracked. `.gitignore` updated in both root and `on-premise/` to track `data/assets/` while keeping `catalog.db` excluded. `npm run setup` still works — the seed overwrites files with identical content.
 
-63. **8 community-adapted skills added** (enhancement) — Added 8 new skills adapted from [obra/superpowers](https://github.com/obra/superpowers) and [NeoLabHQ/context-engineering-kit](https://github.com/NeoLabHQ/context-engineering-kit): `test-driven-development` (TDD Red-Green-Refactor with MAL vitest/pytest patterns), `prompt-engineering` (few-shot, chain-of-thought, template systems, agent prompting), `software-architecture` (Clean Architecture, DDD, library-first, MAL adapter patterns), `changelog-generator` (conventional commits categorization, sprint integration), `subagent-driven-development` (fresh subagent per task, sequential/parallel execution), `root-cause-tracing` (backward stack tracing with real MAL examples), `kaizen` (continuous improvement, Poka-Yoke, YAGNI/JIT), `brainstorming` (collaborative design sessions with MCP context). Each has a full SKILL.md in `on-premise/data/assets/skills/` and a seed entry in `seed-full-catalog.ts`. Total skills: 22 (14 original + 8 new).
+63. **8 community-adapted skills added** (enhancement) — Added 8 new skills adapted from [obra/superpowers](https://github.com/obra/superpowers) and [NeoLabHQ/context-engineering-kit](https://github.com/NeoLabHQ/context-engineering-kit): `test-driven-development` (TDD Red-Green-Refactor with MAL vitest/pytest patterns), `prompt-engineering` (few-shot, chain-of-thought, template systems, agent prompting), `software-architecture` (Clean Architecture, DDD, library-first, MAL adapter patterns), `changelog-generator` (conventional commits categorization, sprint integration), `subagent-driven-development` (fresh subagent per task, sequential/parallel execution), `root-cause-tracing` (backward stack tracing with real MAL examples), `kaizen` (continuous improvement, Poka-Yoke, YAGNI/JIT), `brainstorming` (collaborative design sessions with MCP context). Each has a full SKILL.md in `on-premise/data/assets/skills/` and a seed entry in `seed-full-catalog.ts`. Total skills: 22 (14 original + 8 community).
+
+64. **12 community-adapted subagents added** (enhancement) — Added 12 new subagents adapted from [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents): `mcp-developer` (MCP tool development with registerTool, Zod schemas, adapter pattern), `architect-reviewer` (architecture evaluation, adapter compliance, scalability review), `refactoring-specialist` (systematic refactoring, code smell detection, complexity reduction), `debugger` (hypothesis-driven debugging, MCP/LangGraph/SQLite troubleshooting), `performance-engineer` (profiling, bottleneck analysis, SQLite FTS5/React bundle optimization), `llm-architect` (LangGraph agent design, model selection, RAG patterns), `security-auditor` (OWASP top 10 audit, auth hardening, dependency scanning), `devops-engineer` (CI/CD, Docker, Cloud Run, docker-compose), `api-designer` (REST/MCP tool API design, pagination patterns, error formats), `terraform-engineer` (nube/ GCP infrastructure, Firestore indexes, Cloud Armor), `git-workflow-manager` (MAL branch naming, conventional commits, merge strategies), `agent-organizer` (multi-agent coordination, task decomposition, orchestration patterns). Each has a full .md asset in `on-premise/data/assets/subagents/` and a seed entry in `seed-full-catalog.ts`. 12 MAL-adapted subagents have custom system prompts referencing MAL patterns, tools, and conventions.
+
+65. **116 VoltAgent subagents batch-imported** (enhancement) — Batch-imported all remaining 116 subagent definitions from [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) using `scripts/import-voltagent-subagents.ts`. The script fetches the full GitHub repo tree, downloads each `.md` agent file, parses YAML frontmatter (`name`, `description`, `tools`, `model`), maps VoltAgent model names to actual model IDs (`opus` → `claude-opus-4-6`, `sonnet` → `claude-sonnet-4-5-20250929`, `haiku` → `claude-haiku-4-5-20251001`), and inserts into SQLite with `INSERT OR IGNORE` (preserving the 12 MAL-adapted versions). Each agent also gets a `.md` asset file in `on-premise/data/assets/subagents/` and an FTS index entry. 10 categories: core-development, language-specialists, infrastructure, quality-security, data-ai, developer-experience, specialized-domains, business-product, meta-orchestration, research-analysis. All tagged with `voltagent` for filtering. Total subagents: 135 (5 original + 12 MAL-adapted + 116 VoltAgent + 2 custom).
+
+66. **109 Composio skills batch-imported** (enhancement) — Batch-imported 109 skills from [ComposioHQ/awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills) using `scripts/import-composio-skills.ts`. The script fetches all `*/SKILL.md` files, parses YAML frontmatter (`name`, `description`, `requires`), and inserts into SQLite with `INSERT OR IGNORE`. 78 are SaaS automation skills (tagged `saas-automation`, `rube-mcp`) covering services like Slack, GitHub, Jira, Salesforce, Stripe, Gmail, Notion, etc. — these require the Rube MCP server (`https://rube.app/mcp`). 31 are utility/dev/creative skills: document processing (docx, pdf, pptx, xlsx), `mcp-builder`, `webapp-testing`, `canvas-design`, `content-research-writer`, `file-organizer`, `tailored-resume-generator`, etc. 1 duplicate skipped (`changelog-generator` already existed), 1 template skipped. Each skill's original `SKILL.md` is preserved as-is in `on-premise/data/assets/skills/{id}/SKILL.md`. All tagged with `composio` for filtering. Total skills: 140 (22 seeded + 109 Composio + 9 custom).
+
+67. **Barrido de Elementos Claude Code skill added** (enhancement) — New `barrido-de-elementos-claude-code` skill (category: `custom`) that analyzes any project's tech stack and recommends the most relevant skills, subagents, and MCPs from the MAL catalog. 4-phase process: (1) Project Discovery — reads CLAUDE.md, package.json, pyproject.toml, Dockerfile, terraform/, etc. to build a tech profile; (2) Catalog Fetch — paginates through all 141+ skills, 135+ subagents, and 6 MCPs with `limit:100`; (3) Intelligent Matching — classifies each item as HIGH (direct stack match), MEDIUM (universal methodology), or SKIP (unrelated), with special rules for SaaS automation skills (skip unless detected) and language-specific subagents (skip unless language used); (4) Write to CLAUDE.md — appends/replaces a `## MAL Catalog — Recommended Elements` section with tech stack summary and 3 relevance tables. Target: 20-44 total recommendations. SKILL.md at `on-premise/data/assets/skills/barrido-de-elementos-claude-code/SKILL.md`. Trigger patterns: `barrido`, `catalog scan`, `recommend skills`, `project scan`, `analizar proyecto`. Total seeded skills: 23 (14 original + 8 community + 1 barrido). Total skills: 141 (23 seeded + 109 Composio + 9 custom).
 
 ## Conventions
 
@@ -1779,7 +1787,7 @@ These are real, production-ready MCP servers the team will use through the hub's
 }
 ```
 
-#### Skills to Seed (22)
+#### Skills to Seed (23)
 
 Each skill gets a full SKILL.md asset with real content (instructions, examples, patterns). No placeholders.
 
@@ -1815,12 +1823,13 @@ Each skill gets a full SKILL.md asset with real content (instructions, examples,
 | `technical-writing` | Technical Writing Standards | CLAUDE.md structure, README conventions, API docs, inline comments, architecture diagrams (Mermaid/ASCII), changelog format, decision records (ADR). |
 | `sprint-planning-guide` | Sprint Planning Guide | Story point estimation (Fibonacci), capacity planning, sprint goal setting, backlog refinement, definition of done, velocity calculation, retrospective formats. |
 
-**custom (2):**
+**custom (3):**
 
 | ID | Name | Description |
 |----|------|-------------|
 | `team-onboarding` | Team Onboarding | New member setup guide: repo clone, env setup, MCP connection, Claude Code config, first build, first test, team conventions, who to ask for what. |
 | `git-workflow-mal` | MAL Git Workflow | Branch naming (`feature/mal-xxx`), conventional commits (`feat:`, `fix:`, `docs:`), PR templates, review process, merge strategy, release flow, hotfix process. |
+| `barrido-de-elementos-claude-code` | Barrido de Elementos Claude Code | Analyze any project's tech stack and recommend skills, subagents, and MCPs from the MAL catalog. 4-phase process: discovery, catalog fetch, intelligent matching (HIGH/MEDIUM/SKIP), write to CLAUDE.md. |
 
 #### Commands to Seed (14)
 
@@ -1878,15 +1887,15 @@ The seeding will be implemented as a script (`scripts/seed-full-catalog.ts` in o
 
 1. Checks if items already exist (skip duplicates)
 2. Registers all 6 external MCPs via `mal_register_mcp`
-3. Registers all 14 skills via `mal_register_skill` with real SKILL.md content
+3. Registers all 23 skills via `mal_register_skill` with real SKILL.md content
 4. Registers all 14 commands via `mal_register_command` with working script_templates
-5. Registers all 5 subagents via `mal_register_subagent` with tuned system_prompts
+5. Registers all 17 subagents via `mal_register_subagent` with tuned system_prompts
 6. Seeds the 14 achievement definitions
-7. Reports: `✓ 6 MCPs, 22 skills, 14 commands, 5 subagents, 14 achievements seeded`
+7. Reports: `✓ 6 MCPs, 23 skills, 14 commands, 17 subagents, 14 achievements seeded`
 
 Run via: `npm run seed:full` (on-premise) or `npm run seed:full` (nube)
 
-**Catalog totals after seeding**: 6 MCPs + 22 skills + 14 commands + 5 subagents + 14 achievements = **61 catalog entries**
+**Catalog totals after seeding**: 6 MCPs + 23 skills + 14 commands + 17 subagents + 14 achievements = **74 catalog entries**
 
 ### New Dependencies
 
